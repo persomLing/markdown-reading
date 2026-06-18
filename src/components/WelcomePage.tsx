@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { useAppStore } from '../store'
 
 const WelcomePage: React.FC = () => {
@@ -6,26 +6,58 @@ const WelcomePage: React.FC = () => {
   const [pwd, setPwd] = useState('')
   const [pwdError, setPwdError] = useState(false)
   const [busy, setBusy] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const { verifyOwner, selectLocalFolder, switchSource, setCurrentPage } = useAppStore()
+  const { verifyOwner, selectLocalFolder, selectLocalFolderFromInput, switchSource, setCurrentPage, hasNativeFS, isOwner } = useAppStore()
 
-  // 选择本地文件夹
+  // 选择本地文件夹（自动检测原生/降级）
   const handleSelectFolder = async () => {
-    setBusy(true)
-    try {
-      const ok = await selectLocalFolder()
-      if (ok) setCurrentPage('files')
-    } catch (e) {
-      if ((e as Error).name !== 'AbortError') {
-        console.error('选择文件夹失败:', e)
+    if (hasNativeFS()) {
+      setBusy(true)
+      try {
+        const ok = await selectLocalFolder()
+        if (ok) setCurrentPage('files')
+      } catch (e) {
+        if ((e as Error).name !== 'AbortError') {
+          console.error('选择文件夹失败:', e)
+        }
+      } finally {
+        setBusy(false)
       }
-    } finally {
-      setBusy(false)
+    } else {
+      // 移动端：触发隐藏的 input
+      fileInputRef.current?.click()
     }
   }
 
-  // 我是本人：打开密码弹窗
+  // 移动端 input change 回调
+  const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    setBusy(true)
+    try {
+      const ok = await selectLocalFolderFromInput(files)
+      if (ok) setCurrentPage('files')
+    } catch (err) {
+      console.error('读取文件夹失败:', err)
+    } finally {
+      setBusy(false)
+      // 清空 input 以便重复选择同一文件夹
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  // 我是本人 / 进入每日精读
   const handleOwnerClick = () => {
+    if (isOwner) {
+      // 已验证过，直接进入
+      setBusy(true)
+      switchSource('builtin-daily-reading').then(() => {
+        setCurrentPage('files')
+        setBusy(false)
+      })
+      return
+    }
     setPwd('')
     setPwdError(false)
     setShowPwd(true)
@@ -38,7 +70,6 @@ const WelcomePage: React.FC = () => {
       setPwdError(true)
       return
     }
-    // 验证成功：切换到内置源并进入文件页
     setShowPwd(false)
     setBusy(true)
     switchSource('builtin-daily-reading').then(() => {
@@ -69,15 +100,34 @@ const WelcomePage: React.FC = () => {
 
           <button className="btn-owner" onClick={handleOwnerClick} disabled={busy}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
+              {isOwner ? (
+                <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              ) : (
+                <>
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </>
+              )}
             </svg>
-            我是本人
+            {isOwner ? '每日精读' : '我是本人'}
           </button>
         </div>
 
         <p className="hint">支持 .md, .markdown, .txt 文件</p>
       </div>
+
+      {/* 移动端降级：隐藏的 file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        // @ts-expect-error webkitdirectory 是非标准属性
+        webkitdirectory=""
+        directory=""
+        multiple
+        style={{ display: 'none' }}
+        onChange={handleInputChange}
+        accept=".md,.markdown,.txt"
+      />
 
       {/* 密码验证弹窗 */}
       {showPwd && (

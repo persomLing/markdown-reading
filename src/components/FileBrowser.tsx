@@ -1,7 +1,9 @@
-import React from 'react'
+import React, { useRef } from 'react'
 import { useAppStore } from '../store'
 
 const FileBrowser: React.FC = () => {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const {
     rootName,
     path,
@@ -15,9 +17,11 @@ const FileBrowser: React.FC = () => {
     openFile,
     openFileByPath,
     selectLocalFolder,
+    selectLocalFolderFromInput,
     switchSource,
     removeSource,
     setCurrentPage,
+    hasNativeFS,
   } = useAppStore()
 
   const handleRefresh = async () => {
@@ -25,13 +29,29 @@ const FileBrowser: React.FC = () => {
   }
 
   const handleChangeFolder = async () => {
-    try {
-      const ok = await selectLocalFolder()
-      if (!ok) setCurrentPage('files')
-    } catch (e) {
-      if ((e as Error).name !== 'AbortError') {
-        console.error('切换文件夹失败:', e)
+    if (hasNativeFS()) {
+      try {
+        const ok = await selectLocalFolder()
+        if (!ok) setCurrentPage('files')
+      } catch (e) {
+        if ((e as Error).name !== 'AbortError') {
+          console.error('切换文件夹失败:', e)
+        }
       }
+    } else {
+      fileInputRef.current?.click()
+    }
+  }
+
+  const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    try {
+      await selectLocalFolderFromInput(files)
+    } catch (err) {
+      console.error('读取文件夹失败:', err)
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
@@ -44,7 +64,6 @@ const FileBrowser: React.FC = () => {
   }
 
   const formatSize = (bytes: number) => {
-    console.log('formatSize called with:', bytes, 'type:', typeof bytes)
     if (!bytes || bytes === 0) return '0 B'
     if (bytes < 1024) return bytes + ' B'
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
@@ -239,6 +258,19 @@ const FileBrowser: React.FC = () => {
           </>
         )}
       </div>
+
+      {/* 移动端降级：隐藏的 file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        // @ts-expect-error webkitdirectory 是非标准属性
+        webkitdirectory=""
+        directory=""
+        multiple
+        style={{ display: 'none' }}
+        onChange={handleInputChange}
+        accept=".md,.markdown,.txt"
+      />
     </div>
   )
 }

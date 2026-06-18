@@ -3,9 +3,13 @@ import { persist } from 'zustand/middleware'
 import { AppState, Settings, HistoryItem, CurrentFile, FileEntry, PageType, ThemeName, FontFamily, FileSource } from '../types'
 import { BUILTIN_FILES, BUILTIN_SOURCE, isBuiltinActive } from '../builtin'
 import { saveHandle, getHandle, deleteHandle, ensurePermission } from '../lib/idb'
+import { buildVirtualFS, supportsNativeFS } from '../lib/virtual-fs'
 
 const OWNER_PASSWORD = 'sy225'
 const MAX_LOCAL_SOURCES = 3
+
+// 内存缓存虚拟 handle（不能进 localStorage，页面刷新后丢失）
+const virtualHandles = new Map<string, FileSystemDirectoryHandle>()
 
 interface AppStore extends AppState {
   // 文件系统操作
@@ -50,8 +54,10 @@ interface AppStore extends AppState {
   // 文件来源操作
   verifyOwner: (password: string) => boolean
   selectLocalFolder: () => Promise<boolean>
+  selectLocalFolderFromInput: (files: FileList) => Promise<boolean>
   switchSource: (id: string) => Promise<boolean>
   removeSource: (id: string) => Promise<void>
+  hasNativeFS: () => boolean
 
   // 初始化
   init: () => Promise<void>
@@ -326,20 +332,33 @@ export const useAppStore = create<AppStore>()(
         return true
       },
 
-      // 选择本地文件夹：新增本地源，置顶于本地源，保留最多 MAX_LOCAL_SOURCES 个
+      // 选择本地文件夹（原生 API，桌面 Chromium）
       selectLocalFolder: async () => {
-        if (!('showDirectoryPicker' in window)) {
-          throw new Error('当前浏览器不支持文件夹选择')
-        }
+        if (!supportsNativeFS()) return false
         const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' })
         if (!handle) return false
+
+        // 同名文件夹去重：已存在则直接切换，不重复添加
+        const existingSource = get().sources.find((s) => s.type === 'local' && s.name === handle.name)
+        if (existingSource) {
+          virtualHandles.set(existingSource.id, handle as FileSystemDirectoryHandle)
+          await saveHandle(existingSource.id, handle as FileSystemDirectoryHandle)
+          set({
+            activeSourceId: existingSource.id,
+            root: handle as FileSystemDirectoryHandle,
+            dir: handle as FileSystemDirectoryHandle,
+            path: [],
+            rootName: handle.name,
+          })
+          await get().loadDir()
+          return true
+        }
 
         const id = 'local-' + Date.now()
         await saveHandle(id, handle as FileSystemDirectoryHandle)
         const newSource: FileSource = { id, type: 'local', name: handle.name }
 
         set((state) => {
-          // 内置源（本人）保持第一，本地源最多 3 个
           const builtin = state.sources.filter((s) => s.type === 'builtin')
           const local = state.sources.filter((s) => s.type === 'local')
           const newLocal = [newSource, ...local].slice(0, MAX_LOCAL_SOURCES)
@@ -351,6 +370,50 @@ export const useAppStore = create<AppStore>()(
             dir: handle as FileSystemDirectoryHandle,
             path: [],
             rootName: handle.name,
+          }
+        })
+        await get().loadDir()
+        return true
+      },
+
+      // 选择本地文件夹（<input webkitdirectory> 降级方案，移动端）
+      selectLocalFolderFromInput: async (files: FileList) => {
+        if (!files || files.length === 0) return false
+
+        const vRoot = buildVirtualFS(files)
+        const folderName = vRoot.name || '下载文件夹'
+
+        // 同名文件夹去重：已存在则直接切换，不重复添加
+        const existingSource = get().sources.find((s) => s.type === 'local' && s.name === folderName)
+        if (existingSource) {
+          virtualHandles.set(existingSource.id, vRoot)
+          set({
+            activeSourceId: existingSource.id,
+            root: vRoot,
+            dir: vRoot,
+            path: [],
+            rootName: folderName,
+          })
+          await get().loadDir()
+          return true
+        }
+
+        const id = 'local-' + Date.now()
+        virtualHandles.set(id, vRoot)
+        const newSource: FileSource = { id, type: 'local', name: folderName }
+
+        set((state) => {
+          const builtin = state.sources.filter((s) => s.type === 'builtin')
+          const local = state.sources.filter((s) => s.type === 'local')
+          const newLocal = [newSource, ...local].slice(0, MAX_LOCAL_SOURCES)
+          const sources = [...builtin, ...newLocal]
+          return {
+            sources,
+            activeSourceId: id,
+            root: vRoot,
+            dir: vRoot,
+            path: [],
+            rootName: folderName,
           }
         })
         await get().loadDir()
@@ -374,7 +437,20 @@ export const useAppStore = create<AppStore>()(
           return true
         }
 
-        // 本地源：从 IndexedDB 恢复 handle 并请求权限
+        // 本地源：优先内存缓存（虚拟 handle），再从 IndexedDB（原生 handle）
+        const cached = virtualHandles.get(id)
+        if (cached) {
+          set({
+            activeSourceId: id,
+            root: cached,
+            dir: cached,
+            path: [],
+            rootName: source.name,
+          })
+          await get().loadDir()
+          return true
+        }
+
         const handle = await getHandle(id)
         if (!handle) return false
         const ok = await ensurePermission(handle, true)
@@ -393,6 +469,7 @@ export const useAppStore = create<AppStore>()(
 
       // 移除某个文件源（仅本地）
       removeSource: async (id) => {
+        virtualHandles.delete(id)
         await deleteHandle(id)
         set((state) => {
           const sources = state.sources.filter((s) => s.id !== id)
@@ -405,6 +482,9 @@ export const useAppStore = create<AppStore>()(
           return patch as any
         })
       },
+
+      // 检测是否支持原生 File System Access API
+      hasNativeFS: () => supportsNativeFS(),
 
       // 初始化
       init: async () => {
