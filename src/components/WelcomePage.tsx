@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useAppStore } from '../store'
 
 const WelcomePage: React.FC = () => {
@@ -9,6 +9,15 @@ const WelcomePage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { verifyOwner, selectLocalFolder, selectLocalFolderFromInput, switchSource, setCurrentPage, hasNativeFS, isOwner } = useAppStore()
+
+  // 在 DOM 上设置 webkitdirectory（React 不识别该非标准属性）
+  useEffect(() => {
+    const el = fileInputRef.current
+    if (el) {
+      el.setAttribute('webkitdirectory', '')
+      el.setAttribute('directory', '')
+    }
+  }, [])
 
   // 选择本地文件夹（自动检测原生/降级）
   const handleSelectFolder = async () => {
@@ -116,17 +125,14 @@ const WelcomePage: React.FC = () => {
         <p className="hint">支持 .md, .markdown, .txt 文件</p>
       </div>
 
-      {/* 移动端降级：隐藏的 file input */}
+      {/* 移动端降级：隐藏的 file input（不能用 display:none，iOS Safari 上 click() 会失效） */}
       <input
         ref={fileInputRef}
         type="file"
-        // @ts-expect-error webkitdirectory 是非标准属性
-        webkitdirectory=""
-        directory=""
         multiple
-        style={{ display: 'none' }}
+        style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none', top: 0, left: 0 }}
         onChange={handleInputChange}
-        accept=".md,.markdown,.txt"
+        accept=".md,.markdown,.txt,text/markdown,text/plain"
       />
 
       {/* 密码验证弹窗 */}

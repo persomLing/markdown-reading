@@ -1,8 +1,16 @@
-import React, { useRef } from 'react'
+import React, { useRef, useEffect } from 'react'
 import { useAppStore } from '../store'
 
 const FileBrowser: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const el = fileInputRef.current
+    if (el) {
+      el.setAttribute('webkitdirectory', '')
+      el.setAttribute('directory', '')
+    }
+  }, [])
 
   const {
     rootName,
@@ -259,17 +267,14 @@ const FileBrowser: React.FC = () => {
         )}
       </div>
 
-      {/* 移动端降级：隐藏的 file input */}
+      {/* 移动端降级：隐藏的 file input（不能用 display:none，iOS Safari 上 click() 会失效） */}
       <input
         ref={fileInputRef}
         type="file"
-        // @ts-expect-error webkitdirectory 是非标准属性
-        webkitdirectory=""
-        directory=""
         multiple
-        style={{ display: 'none' }}
+        style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none', top: 0, left: 0 }}
         onChange={handleInputChange}
-        accept=".md,.markdown,.txt"
+        accept=".md,.markdown,.txt,text/markdown,text/plain"
       />
     </div>
   )
