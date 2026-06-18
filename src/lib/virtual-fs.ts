@@ -123,7 +123,31 @@ export function buildVirtualFS(files: FileList | File[]): VirtualDirectoryHandle
   return new VirtualDirectoryHandle(root)
 }
 
-/** 检测是否支持原生 File System Access API */
+/**
+ * 检测是否真正支持原生 File System Access API
+ * 安卓 Chrome 即使 API 存在也不可用，需排除移动端
+ */
 export function supportsNativeFS(): boolean {
-  return 'showDirectoryPicker' in window
+  if (!('showDirectoryPicker' in window)) return false
+  // 排除移动端（安卓 Chrome/iOS Safari 都不支持 showDirectoryPicker 实际调用）
+  const ua = navigator.userAgent || ''
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile|Android/i.test(ua)
+  if (isMobile) return false
+  // 进一步检测触屏（部分 Windows 触屏设备也可能有问题）
+  if (navigator.maxTouchPoints > 1 && /Mobi|Tablet/i.test(ua)) return false
+  return true
+}
+
+/**
+ * 尝试调用 showDirectoryPicker，失败抛错由调用方降级
+ * 安卓等环境即使 API 存在也会抛 NotSupportedError
+ */
+export async function tryShowDirectoryPicker(): Promise<FileSystemDirectoryHandle | null> {
+  try {
+    const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' })
+    return handle as FileSystemDirectoryHandle
+  } catch (e) {
+    // 用户取消抛 AbortError，其他错误由调用方处理
+    throw e
+  }
 }

@@ -28,7 +28,6 @@ const FileBrowser: React.FC = () => {
     selectLocalFolderFromInput,
     switchSource,
     removeSource,
-    setCurrentPage,
     hasNativeFS,
   } = useAppStore()
 
@@ -40,15 +39,17 @@ const FileBrowser: React.FC = () => {
     if (hasNativeFS()) {
       try {
         const ok = await selectLocalFolder()
-        if (!ok) setCurrentPage('files')
+        if (ok) return
       } catch (e) {
         if ((e as Error).name !== 'AbortError') {
-          console.error('切换文件夹失败:', e)
+          console.warn('原生文件夹选择不可用，降级到 input:', e)
+        } else {
+          return
         }
       }
-    } else {
-      fileInputRef.current?.click()
     }
+    // 降级：触发隐藏的 input
+    fileInputRef.current?.click()
   }
 
   const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {

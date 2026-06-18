@@ -25,18 +25,24 @@ const WelcomePage: React.FC = () => {
       setBusy(true)
       try {
         const ok = await selectLocalFolder()
-        if (ok) setCurrentPage('files')
+        if (ok) {
+          setCurrentPage('files')
+          return
+        }
       } catch (e) {
+        // 原生 API 调用失败（安卓/iOS 上 API 存在但不可用），降级到 input
         if ((e as Error).name !== 'AbortError') {
-          console.error('选择文件夹失败:', e)
+          console.warn('原生文件夹选择不可用，降级到 input:', e)
+        } else {
+          // 用户取消，不降级
+          return
         }
       } finally {
         setBusy(false)
       }
-    } else {
-      // 移动端：触发隐藏的 input
-      fileInputRef.current?.click()
     }
+    // 降级：触发隐藏的 input
+    fileInputRef.current?.click()
   }
 
   // 移动端 input change 回调
