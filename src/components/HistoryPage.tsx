@@ -116,7 +116,17 @@ const HistoryPage: React.FC = () => {
       <div className="history-header">
         <h2>阅读历史</h2>
         {history.length > 0 && (
-          <button onClick={clearHistory} className="clear-btn">
+          <button onClick={() => {
+            setConfirmModal({
+              title: '清空历史',
+              message: '确定要清空所有阅读历史吗？此操作不可撤销。',
+              onConfirm: () => {
+                clearHistory()
+                setConfirmModal(null)
+                showToast('已清空历史', 'success')
+              }
+            })
+          }} className="clear-btn">
             清空历史
           </button>
         )}
@@ -164,12 +174,12 @@ const HistoryPage: React.FC = () => {
               <div className="hi-icon">
                 {getFileIcon(item.name)}
               </div>
-              {getSourceBadge(item) && (
-                <div className="hi-badge-wrap">{getSourceBadge(item)}</div>
-              )}
               <div className="hi-info">
                 <div className="hi-name">{item.name}</div>
                 <div className="hi-meta">
+                  {getSourceBadge(item) && (
+                    <div className="hi-badge-wrap">{getSourceBadge(item)}</div>
+                  )}
                   <span className="hi-time">{formatDate(item.ts)}</span>
                   <span className="hi-dot" />
                   <span className="hi-size">{formatSize(item.size)}</span>

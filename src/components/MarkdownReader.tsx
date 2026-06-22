@@ -18,13 +18,20 @@ renderer.code = function(code: string, language: string | undefined) {
   return `<div class="code-block">
     <div class="code-header">
       <span class="code-lang">${language || 'text'}</span>
-      <button class="copy-btn" onclick="window.copyCode(this)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-        </svg>
-        <span>复制</span>
-      </button>
+      <div class="code-actions">
+        <button class="fullscreen-btn" onclick="window.fullscreenCode(this)" title="全屏">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+          </svg>
+        </button>
+        <button class="copy-btn" onclick="window.copyCode(this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          <span>复制</span>
+        </button>
+      </div>
     </div>
     <pre><code class="hljs language-${language || 'auto'}">${highlighted}</code></pre>
   </div>`
@@ -99,8 +106,137 @@ const MarkdownReader: React.FC = () => {
       })
     }
 
+    // 全屏代码功能 - 使用浏览器原生全屏API
+    (window as any).fullscreenCode = (btn: HTMLButtonElement) => {
+      const codeBlock = btn.closest('.code-block')
+      if (!codeBlock) return
+      
+      // 创建全屏容器
+      const fullscreenDiv = document.createElement('div')
+      fullscreenDiv.className = 'code-fullscreen-wrapper'
+      
+      // 创建头部
+      const header = document.createElement('div')
+      header.className = 'code-fullscreen-header'
+      
+      const langSpan = codeBlock.querySelector('.code-lang')
+      const langText = langSpan?.textContent || 'text'
+      
+      header.innerHTML = `
+        <span class="code-fullscreen-lang">${langText}</span>
+        <div class="code-fullscreen-actions">
+          <button class="code-fullscreen-copy" onclick="window.copyFullscreenCode(this)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            <span>复制</span>
+          </button>
+          <button class="code-fullscreen-close" onclick="window.closeFullscreenCode()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+            </svg>
+            <span>退出全屏</span>
+          </button>
+        </div>
+      `
+      
+      // 克隆代码内容
+      const pre = codeBlock.querySelector('pre')
+      if (pre) {
+        const clonedPre = pre.cloneNode(true)
+        fullscreenDiv.appendChild(header)
+        fullscreenDiv.appendChild(clonedPre)
+      }
+      
+      // 存储引用用于关闭
+      document.body.appendChild(fullscreenDiv)
+      ;(window as any).__fullscreenCodeDiv = fullscreenDiv
+      
+      // 请求浏览器全屏
+      if (fullscreenDiv.requestFullscreen) {
+        fullscreenDiv.requestFullscreen()
+      } else if ((fullscreenDiv as any).webkitRequestFullscreen) {
+        (fullscreenDiv as any).webkitRequestFullscreen()
+      } else if ((fullscreenDiv as any).msRequestFullscreen) {
+        (fullscreenDiv as any).msRequestFullscreen()
+      }
+      
+      // 尝试锁定横屏方向（移动端）
+      try {
+        if (screen.orientation && (screen.orientation as any).lock) {
+          (screen.orientation as any).lock('landscape').catch(() => {
+            // 某些设备可能不支持锁定方向，忽略错误
+            console.log('无法锁定横屏方向')
+          })
+        }
+      } catch (e) {
+        // 忽略不支持的方向锁定
+      }
+      
+      // 监听全屏状态变化
+      const handleFullscreenChange = () => {
+        if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
+          // 退出全屏时清理DOM
+          fullscreenDiv.remove()
+          document.removeEventListener('fullscreenchange', handleFullscreenChange)
+          document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
+          
+          // 解锁屏幕方向
+          try {
+            if (screen.orientation && (screen.orientation as any).unlock) {
+              (screen.orientation as any).unlock()
+            }
+          } catch (e) {
+            // 忽略解锁错误
+          }
+        }
+      }
+      document.addEventListener('fullscreenchange', handleFullscreenChange)
+      document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
+    }
+
+    // 关闭全屏
+    (window as any).closeFullscreenCode = () => {
+      if (document.exitFullscreen) {
+        document.exitFullscreen()
+      } else if ((document as any).webkitExitFullscreen) {
+        (document as any).webkitExitFullscreen()
+      } else if ((document as any).msExitFullscreen) {
+        (document as any).msExitFullscreen()
+      }
+      
+      // 解锁屏幕方向
+      try {
+        if (screen.orientation && (screen.orientation as any).unlock) {
+          (screen.orientation as any).unlock()
+        }
+      } catch (e) {
+        // 忽略解锁错误
+      }
+    }
+
+    // 全屏内复制代码
+    (window as any).copyFullscreenCode = (btn: HTMLButtonElement) => {
+      const code = btn.closest('.code-fullscreen-wrapper')?.querySelector('pre code')?.textContent || ''
+      navigator.clipboard.writeText(code).then(() => {
+        const span = btn.querySelector('span')
+        if (span) {
+          btn.classList.add('copied')
+          span.textContent = '已复制'
+          setTimeout(() => {
+            btn.classList.remove('copied')
+            span.textContent = '复制'
+          }, 2000)
+        }
+      })
+    }
+
     return () => {
       delete (window as any).copyCode
+      delete (window as any).fullscreenCode
+      delete (window as any).closeFullscreenCode
+      delete (window as any).copyFullscreenCode
     }
   }, [])
 
@@ -167,6 +303,9 @@ const MarkdownReader: React.FC = () => {
         // 生成目录
         generateToc()
         
+        // 为内部锚点链接添加点击事件
+        setupAnchorLinks()
+        
         // 恢复滚动位置
         const savedScroll = localStorage.getItem(`scroll-${curFile.path}`)
         if (savedScroll && scrollRef.current) {
@@ -202,12 +341,18 @@ const MarkdownReader: React.FC = () => {
     const items: TocItem[] = []
 
     headings.forEach((heading, index) => {
-      const id = `heading-${index}`
-      heading.id = id
+      // 生成与 Markdown 锚点链接格式匹配的 ID
+      const text = heading.textContent || ''
+      const id = text
+        .toLowerCase()
+        .replace(/[\s\p{P}]+/gu, '') // 去掉空格和标点符号
+        .replace(/[^\w\u4e00-\u9fa5]/g, '') // 保留字母、数字和中文
+      
+      heading.id = id || `heading-${index}`
       
       items.push({
-        id,
-        text: heading.textContent || '',
+        id: heading.id,
+        text,
         level: parseInt(heading.tagName.charAt(1))
       })
     })
@@ -339,19 +484,34 @@ const MarkdownReader: React.FC = () => {
     }
   }
 
+  // 清除搜索高亮函数
+  const clearSearchHighlight = () => {
+    if (contentRef.current) {
+      const marks = contentRef.current.querySelectorAll('mark.search-highlight')
+      marks.forEach(mark => {
+        const parent = mark.parentNode
+        if (parent) {
+          parent.replaceChild(document.createTextNode(mark.textContent || ''), mark)
+          parent.normalize()
+        }
+      })
+    }
+  }
+
+  // 监听搜索关闭，清除高亮
+  useEffect(() => {
+    if (!searchOpen) {
+      clearSearchHighlight()
+      setSearchQuery('')
+      setSearchResults([])
+      setCurrentSearchIndex(-1)
+    }
+  }, [searchOpen])
+
   // 清除搜索高亮
   useEffect(() => {
     return () => {
-      if (contentRef.current) {
-        const marks = contentRef.current.querySelectorAll('mark.search-highlight')
-        marks.forEach(mark => {
-          const parent = mark.parentNode
-          if (parent) {
-            parent.replaceChild(document.createTextNode(mark.textContent || ''), mark)
-            parent.normalize()
-          }
-        })
-      }
+      clearSearchHighlight()
     }
   }, [curFile])
 
@@ -361,7 +521,49 @@ const MarkdownReader: React.FC = () => {
     if (element) {
       element.scrollIntoView({ behavior: 'smooth' })
       toggleToc()
+      
+      // 添加视觉反馈 - 目标标题短暂高亮
+      element.style.transition = 'background-color 0.3s ease'
+      element.style.backgroundColor = 'var(--accent-dim)'
+      setTimeout(() => {
+        element.style.backgroundColor = ''
+      }, 1500)
     }
+  }
+
+  // 设置内部锚点链接的点击事件
+  const setupAnchorLinks = () => {
+    if (!contentRef.current || contentRef.current.dataset.anchorListener) return
+    
+    // 标记已添加事件监听器
+    contentRef.current.dataset.anchorListener = 'true'
+    
+    // 使用事件委托，避免重复绑定事件
+    contentRef.current.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement
+      const link = target.closest('a[href^="#"]') as HTMLAnchorElement
+      
+      if (link) {
+        e.preventDefault()
+        const href = link.getAttribute('href')
+        if (!href) return
+        
+        const targetId = decodeURIComponent(href.substring(1)) // 去掉 # 并解码URL
+        const targetElement = document.getElementById(targetId)
+        
+        if (targetElement) {
+          // 平滑滚动到目标位置
+          targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          
+          // 添加视觉反馈 - 目标标题短暂高亮
+          targetElement.style.transition = 'background-color 0.3s ease'
+          targetElement.style.backgroundColor = 'var(--accent-dim)'
+          setTimeout(() => {
+            targetElement.style.backgroundColor = ''
+          }, 1500)
+        }
+      }
+    })
   }
 
   // 截图功能

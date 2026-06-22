@@ -1467,6 +1467,8 @@ input {
   margin-top: 1.5em;
   margin-bottom: 0.5em;
   color: var(--t1);
+  scroll-margin-top: 80px; /* 滚动时顶部留白，避免被工具栏遮挡 */
+  transition: background-color 0.3s ease; /* 平滑过渡效果 */
 }
 
 .markdown-body h1 {
@@ -1599,6 +1601,7 @@ input {
   border: 1px solid var(--border2);
   border-radius: 12px;
   overflow: hidden;
+  max-width: 100%;
 }
 
 .markdown-body .md-table-scroll {
@@ -1623,7 +1626,7 @@ input {
 
 .markdown-body .md-table table {
   width: 100%;
-  min-width: 100%;
+  min-width: 600px; /* 表格最小宽度，确保内容不被压缩 */
   margin: 0;
   border: none;
   border-collapse: collapse;
@@ -1673,6 +1676,24 @@ input {
 
 .markdown-body .md-table tbody tr:last-child td {
   border-bottom: none;
+}
+
+/* 移动端表格优化 */
+@media (max-width: 768px) {
+  .markdown-body .md-table {
+    margin: 0 -20px 1.2em; /* 负边距让表格占满整个宽度 */
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  .markdown-body .md-table-scroll {
+    padding: 0 20px; /* 恢复内边距 */
+  }
+
+  .markdown-body .md-table table {
+    min-width: 500px; /* 移动端表格最小宽度 */
+  }
 }
 
 .markdown-body img {
@@ -2512,6 +2533,169 @@ input {
   border: none;
 }
 
+/* 代码操作按钮容器 */
+.code-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 全屏按钮 */
+.fullscreen-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--t2);
+  background: var(--elevated);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.fullscreen-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.fullscreen-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ====================== Code Fullscreen (浏览器原生全屏) ====================== */
+.code-fullscreen-wrapper {
+  width: 100%;
+  height: 100%;
+  background: var(--code-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 全屏状态下的样式 */
+.code-fullscreen-wrapper:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  background: var(--code-bg);
+}
+
+.code-fullscreen-wrapper:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  background: var(--code-bg);
+}
+
+.code-fullscreen-wrapper:-ms-fullscreen {
+  width: 100vw;
+  height: 100vh;
+  background: var(--code-bg);
+}
+
+/* 横屏全屏优化 */
+@media (orientation: landscape) {
+  .code-fullscreen-wrapper:fullscreen {
+    padding: 0;
+  }
+
+  .code-fullscreen-wrapper:fullscreen .code-fullscreen-header {
+    padding: 12px 32px;
+  }
+
+  .code-fullscreen-wrapper:fullscreen pre {
+    padding: 24px 48px;
+    font-size: 16px;
+    line-height: 1.8;
+  }
+
+  .code-fullscreen-wrapper:fullscreen pre code {
+    font-size: 16px;
+    line-height: 1.8;
+  }
+}
+
+.code-fullscreen-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: var(--stripe);
+  border-bottom: 1px solid var(--border2);
+  flex-shrink: 0;
+}
+
+.code-fullscreen-lang {
+  font-size: 0.95rem;
+  color: var(--t3);
+  font-family: var(--reader-font, "Noto Serif SC"), "JetBrains Mono", monospace;
+}
+
+.code-fullscreen-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.code-fullscreen-copy,
+.code-fullscreen-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  color: var(--t2);
+  background: var(--elevated);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.code-fullscreen-copy:hover,
+.code-fullscreen-close:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.code-fullscreen-copy.copied {
+  color: #10b981;
+  border-color: #10b981;
+}
+
+.code-fullscreen-copy svg,
+.code-fullscreen-close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.code-fullscreen-wrapper pre {
+  margin: 0;
+  padding: 24px;
+  overflow: auto;
+  flex: 1;
+  border-radius: 0;
+  border: none;
+  background: var(--code-bg);
+}
+
+.code-fullscreen-wrapper pre code {
+  font-size: 15px;
+  line-height: 1.7;
+  font-family: var(--reader-font, "Noto Serif SC"), "JetBrains Mono", monospace;
+}
+
+/* 横屏全屏优化 */
+
+.code-fullscreen-container pre code {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
 /* ====================== Screenshot ====================== */
 .screenshot-overlay {
   position: fixed;
@@ -2669,7 +2853,7 @@ input {
   border-radius: 9px;
   color: var(--t3);
   transition: all 0.2s;
-  opacity: 0;
+  opacity: 1; /* 一直显示删除按钮 */
 }
 
 .history-item:hover .hi-delete {
