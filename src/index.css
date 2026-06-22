@@ -614,6 +614,105 @@ input {
   transform: scale(0.97);
 }
 
+/* GitHub 加载过渡 */
+.github-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 0 8px;
+  animation: fadeSlideIn 0.3s ease-out;
+}
+
+.github-loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.github-loading-text {
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--t1);
+  margin: 0;
+}
+
+.github-loading-hint {
+  font-size: 0.78rem;
+  color: var(--t3);
+  margin: 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 全局加载遮罩 */
+.global-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.global-loading-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 36px 48px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  animation: fadeSlideIn 0.3s ease-out;
+}
+
+.global-loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.global-loading-text {
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--t1);
+  margin: 0;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .btn-outline {
   display: inline-flex;
   align-items: center;
@@ -2589,6 +2688,75 @@ input {
 .hi-delete svg {
   width: 16px;
   height: 16px;
+}
+
+/* ====================== History Badges ====================== */
+.hi-badge-wrap {
+  flex-shrink: 0;
+}
+
+.hi-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.badge-builtin {
+  color: #d4a853;
+  background: rgba(212, 168, 83, 0.12);
+}
+
+.badge-github {
+  color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.12);
+}
+
+/* ====================== GitHub Token Settings ====================== */
+.gh-token-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.gh-token-row .pwd-input {
+  flex: 1;
+}
+
+.gh-token-save {
+  flex-shrink: 0;
+  padding: 12px 18px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 12px;
+  transition: all 0.2s;
+}
+
+.gh-token-save:hover {
+  background: var(--accent-hover);
+}
+
+.gh-token-save:active {
+  transform: scale(0.97);
+}
+
+.gh-token-clear {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--danger);
+  padding: 6px 12px;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.gh-token-clear:hover {
+  background: rgba(239, 68, 68, 0.1);
 }
 
 /* ====================== Search Highlight ====================== */
