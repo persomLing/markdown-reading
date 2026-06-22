@@ -1,8 +1,13 @@
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import { useAppStore } from '../store'
+import { showToast } from './Toast'
 
 const FileBrowser: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const initRef = useRef(false)
+  const [showGithub, setShowGithub] = useState(false)
+  const [githubUrl, setGithubUrl] = useState('')
+  const [githubBusy, setGithubBusy] = useState(false)
 
   useEffect(() => {
     const el = fileInputRef.current
@@ -28,8 +33,18 @@ const FileBrowser: React.FC = () => {
     selectLocalFolderFromInput,
     switchSource,
     removeSource,
+    addGitHubSource,
     hasNativeFS,
   } = useAppStore()
+
+  // 当 FileBrowser 重新挂载时，如果 source 还在但 entries 为空则重新加载
+  useEffect(() => {
+    if (initRef.current) return
+    initRef.current = true
+    if (activeSourceId && entries.length === 0) {
+      useAppStore.getState().loadDir()
+    }
+  }, [activeSourceId, entries.length])
 
   const handleRefresh = async () => {
     await useAppStore.getState().loadDir()
@@ -69,6 +84,28 @@ const FileBrowser: React.FC = () => {
       await switchSource(id)
     } catch (e) {
       console.error('切换来源失败:', e)
+    }
+  }
+
+  // GitHub 仓库提交
+  const handleGithubSubmit = async () => {
+    const url = githubUrl.trim()
+    if (!url) {
+      showToast('请输入 GitHub 仓库地址', 'error')
+      return
+    }
+    setGithubBusy(true)
+    try {
+      const result = await addGitHubSource(url)
+      if (result.ok) {
+        setShowGithub(false)
+      } else {
+        showToast(result.error || '添加失败', 'error')
+      }
+    } catch (e) {
+      showToast('网络错误，请重试', 'error')
+    } finally {
+      setGithubBusy(false)
     }
   }
 
@@ -119,6 +156,11 @@ const FileBrowser: React.FC = () => {
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
               </svg>
             </button>
+            <button onClick={() => { setShowGithub(true); setGithubUrl('') }} title="添加 GitHub 仓库">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -137,8 +179,13 @@ const FileBrowser: React.FC = () => {
                     <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                   </svg>
                 )}
+                {s.type === 'github' && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+                  </svg>
+                )}
                 <span className="st-name">{s.name}</span>
-                {activeSourceId === s.id && s.type === 'local' && (
+                {activeSourceId === s.id && (s.type === 'local' || s.type === 'github') && (
                   <span
                     className="st-close"
                     onClick={(e) => {
@@ -151,12 +198,6 @@ const FileBrowser: React.FC = () => {
                 )}
               </button>
             ))}
-            <button className="source-tab add" onClick={handleChangeFolder} title="添加本地文件夹">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-            </button>
           </div>
         )}
         
@@ -277,6 +318,51 @@ const FileBrowser: React.FC = () => {
         onChange={handleInputChange}
         accept=".md,.markdown,.txt,text/markdown,text/plain"
       />
+
+      {/* GitHub 仓库输入弹窗 */}
+      {showGithub && (
+        <div className="pwd-overlay" onClick={() => !githubBusy && setShowGithub(false)}>
+          <div className="pwd-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="pwd-head">
+              <div className="pwd-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+                </svg>
+              </div>
+              <h3>GitHub 仓库</h3>
+            </div>
+            <p className="pwd-desc">输入公共仓库地址，浏览其中的 Markdown 文件</p>
+            <input
+              type="url"
+              className="pwd-input"
+              value={githubUrl}
+              autoFocus
+              disabled={githubBusy}
+              onChange={(e) => setGithubUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !githubBusy) handleGithubSubmit()
+                if (e.key === 'Escape' && !githubBusy) setShowGithub(false)
+              }}
+              placeholder="https://github.com/owner/repo"
+            />
+            {githubBusy && (
+              <div className="github-loading">
+                <div className="github-loading-spinner" />
+                <p className="github-loading-text">正在从 GitHub 获取仓库内容...</p>
+                <p className="github-loading-hint">首次加载可能需要几秒钟</p>
+              </div>
+            )}
+            <div className="pwd-actions">
+              <button className="pwd-cancel" onClick={() => setShowGithub(false)} disabled={githubBusy}>
+                取消
+              </button>
+              <button className="pwd-confirm" onClick={handleGithubSubmit} disabled={githubBusy}>
+                {githubBusy ? '加载中...' : '打开'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
