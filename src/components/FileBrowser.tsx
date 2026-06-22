@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react'
 import { useAppStore } from '../store'
 import { showToast } from './Toast'
+import { getHandle, ensurePermission } from '../lib/idb'
 
 const FileBrowser: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -8,6 +9,7 @@ const FileBrowser: React.FC = () => {
   const [showGithub, setShowGithub] = useState(false)
   const [githubUrl, setGithubUrl] = useState('')
   const [githubBusy, setGithubBusy] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     const el = fileInputRef.current
@@ -25,7 +27,6 @@ const FileBrowser: React.FC = () => {
     sources,
     activeSourceId,
     enterDir,
-    goUp,
     navigateToPath,
     openFile,
     openFileByPath,
@@ -38,17 +39,52 @@ const FileBrowser: React.FC = () => {
     setCurrentPage,
   } = useAppStore()
 
-  // 当 FileBrowser 重新挂载时，如果 source 还在但 entries 为空则重新加载
+  // 当 FileBrowser 重新挂载时，检查文件源有效性并加载
   useEffect(() => {
     if (initRef.current) return
     initRef.current = true
-    if (activeSourceId && entries.length === 0) {
-      useAppStore.getState().loadDir()
+    
+    const checkSources = async () => {
+      const store = useAppStore.getState()
+      const localSources = store.sources.filter(s => s.type === 'local')
+      const invalidSources: string[] = []
+      
+      // 检查所有本地文件源
+      for (const source of localSources) {
+        const handle = await getHandle(source.id)
+        if (!handle) {
+          invalidSources.push(source.name)
+          await store.removeSource(source.id)
+        } else {
+          const ok = await ensurePermission(handle, true)
+          if (!ok) {
+            invalidSources.push(source.name)
+            await store.removeSource(source.id)
+          }
+        }
+      }
+      
+      // 如果有无效源，弹窗提示
+      if (invalidSources.length > 0) {
+        showToast(`以下文件源已失效并已移除：${invalidSources.join('、')}`, 'info')
+      }
+      
+      // 加载目录
+      if (store.activeSourceId && store.entries.length === 0) {
+        await store.loadDir()
+      }
     }
+    
+    checkSources()
   }, [activeSourceId, entries.length])
 
   const handleRefresh = async () => {
-    await useAppStore.getState().loadDir()
+    setRefreshing(true)
+    try {
+      await useAppStore.getState().loadDir()
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   const handleChangeFolder = async () => {
@@ -82,7 +118,14 @@ const FileBrowser: React.FC = () => {
 
   const handleSwitchSource = async (id: string) => {
     try {
-      await switchSource(id)
+      const ok = await switchSource(id)
+      if (!ok) {
+        const source = sources.find(s => s.id === id)
+        if (source && source.type === 'local') {
+          showToast(`文件源「${source.name}」已失效，将自动移除`, 'info')
+          await removeSource(id)
+        }
+      }
     } catch (e) {
       console.error('切换来源失败:', e)
     }
@@ -143,7 +186,7 @@ const FileBrowser: React.FC = () => {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
-            {rootName}
+            <span>{rootName}</span>
           </div>
           <div className="files-actions">
             <button onClick={() => setCurrentPage('welcome')} title="返回封面">
@@ -152,7 +195,7 @@ const FileBrowser: React.FC = () => {
                 <polyline points="9 22 9 12 15 12 15 22" />
               </svg>
             </button>
-            <button onClick={handleRefresh} title="刷新">
+            <button onClick={handleRefresh} title="刷新" className={refreshing ? 'refreshing' : ''}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="23 4 23 10 17 10" />
                 <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
@@ -262,20 +305,6 @@ const FileBrowser: React.FC = () => {
           </div>
         ) : (
           <>
-            {/* 返回上级目录 */}
-            {path.length > 0 && (
-              <div className="file-item" onClick={goUp}>
-                <div className="fi-icon folder">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="15 18 9 12 15 6" />
-                  </svg>
-                </div>
-                <div className="fi-info">
-                  <div className="fi-name">..</div>
-                </div>
-              </div>
-            )}
-            
             {/* 文件和文件夹列表 */}
             {entries.map((entry, i) => (
               <div 

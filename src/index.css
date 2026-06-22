@@ -776,6 +776,14 @@ input {
   display: flex;
   align-items: center;
   gap: 7px;
+  min-width: 0;
+  flex: 1;
+}
+
+.files-top .folder-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .files-top .folder-name svg {
@@ -807,6 +815,15 @@ input {
 
 .files-actions button:active {
   transform: scale(0.92);
+}
+
+.files-actions button.refreshing svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .files-actions button svg {
@@ -910,6 +927,16 @@ input {
   white-space: nowrap;
   scrollbar-width: none;
   letter-spacing: 0.02em;
+  padding: 4px 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.bc-item {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .breadcrumb::-webkit-scrollbar {

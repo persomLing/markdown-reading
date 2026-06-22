@@ -734,14 +734,12 @@ export const useAppStore = create<AppStore>()(
 
           const handle = await getHandle(id)
           if (!handle) {
-            // 文件源找不到，自动删除
-            await get().removeSource(id)
+            // 文件源找不到，返回false（不自动删除，由调用方处理）
             return false
           }
           const ok = await ensurePermission(handle, true)
           if (!ok) {
-            // 权限验证失败，自动删除
-            await get().removeSource(id)
+            // 权限验证失败，返回false（不自动删除，由调用方处理）
             return false
           }
 
