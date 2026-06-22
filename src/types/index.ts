@@ -7,11 +7,12 @@ export interface FileEntry {
   builtin?: boolean
 }
 
-// 文件来源：内置每日精读 / 本地文件夹
+// 文件来源：内置每日精读 / 本地文件夹 / GitHub 仓库
 export interface FileSource {
   id: string
-  type: 'builtin' | 'local'
+  type: 'builtin' | 'local' | 'github'
   name: string
+  repoUrl?: string
 }
 
 export interface CurrentFile {
@@ -27,12 +28,16 @@ export interface HistoryItem {
   path: string
   size: number
   ts: number
+  sourceType?: 'builtin' | 'local' | 'github'
+  sourceId?: string
 }
 
 export interface LastFile {
   path: string
   name: string
   ts?: number
+  sourceType?: 'builtin' | 'local' | 'github'
+  sourceId?: string
 }
 
 // 设置相关类型
@@ -44,6 +49,7 @@ export interface Settings {
   fontFamily: FontFamily
   fontSize: number
   lh: number
+  githubToken?: string
 }
 
 // 搜索结果类型
@@ -93,6 +99,22 @@ export interface AppState {
 
   // 页面状态
   currentPage: 'welcome' | 'files' | 'reader' | 'history' | 'settings'
+}
+
+// GitHub 仓库解析信息
+export interface GitHubRepoInfo {
+  owner: string
+  repo: string
+  branch: string
+  subdir?: string
+}
+
+// GitHub 目录条目
+export interface GitHubEntry {
+  name: string
+  path: string
+  type: 'file' | 'dir'
+  size?: number
 }
 
 // 页面类型
