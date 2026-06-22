@@ -162,15 +162,44 @@ export const useAppStore = create<AppStore>()(
       loadDir: async () => {
         const { dir, setEntries, activeSourceId, sources, path, settings } = get()
 
-        // 内置源：直接生成内置文件列表
+        // 内置源：根据当前路径生成文件和目录列表
         if (isBuiltinActive(activeSourceId)) {
-          const builtinEntries: FileEntry[] = BUILTIN_FILES.map((f) => ({
-            name: f.name,
-            kind: 'file' as const,
-            size: f.size,
-            builtin: true,
-          }))
-          setEntries(builtinEntries)
+          const currentPath = path.join('/')
+          const dirs = new Set<string>()
+          const files: FileEntry[] = []
+          
+          BUILTIN_FILES.forEach((f) => {
+            // 检查文件是否在当前路径下
+            if (currentPath && !f.path.startsWith(currentPath + '/')) return
+            
+            const relativePath = currentPath ? f.path.slice(currentPath.length + 1) : f.path
+            const parts = relativePath.split('/')
+            
+            if (parts.length === 1) {
+              // 当前层级的文件
+              files.push({
+                name: f.name,
+                kind: 'file' as const,
+                size: f.size,
+                builtin: true,
+              })
+            } else if (parts.length > 1) {
+              // 子目录
+              dirs.add(parts[0])
+            }
+          })
+          
+          // 合并目录和文件
+          const entries: FileEntry[] = [
+            ...Array.from(dirs).sort().map(d => ({
+              name: d,
+              kind: 'dir' as const,
+              builtin: true,
+            })),
+            ...files,
+          ]
+          
+          setEntries(entries)
           return
         }
 
@@ -228,20 +257,25 @@ export const useAppStore = create<AppStore>()(
       },
 
       enterDir: async (name) => {
-        const { activeSourceId, sources } = get()
-        if (isBuiltinActive(activeSourceId)) return
+        const { activeSourceId, sources, path, setPath, loadDir } = get()
+        
+        // 内置源：更新 path，重新加载
+        if (isBuiltinActive(activeSourceId)) {
+          setPath([...path, name])
+          await loadDir()
+          return
+        }
 
         // GitHub 源：仅更新 path，重新加载
         const source = sources.find(s => s.id === activeSourceId)
         if (source?.type === 'github') {
-          const { path, setPath } = get()
           setPath([...path, name])
-          await get().loadDir()
+          await loadDir()
           return
         }
 
         // 本地源：切换 dir handle
-        const { entries, path, setDir, setPath, loadDir } = get()
+        const { entries, setDir } = get()
         const entry = entries.find(e => e.name === name && e.kind === 'dir')
         if (!entry || !entry.handle) return
 
@@ -252,26 +286,31 @@ export const useAppStore = create<AppStore>()(
       },
 
       goUp: async () => {
-        const { activeSourceId, path } = get()
-        if (isBuiltinActive(activeSourceId)) return
+        const { path } = get()
         if (path.length === 0) return
         await get().navigateToPath(path.slice(0, -1))
       },
 
       navigateToPath: async (newPath) => {
-        const { activeSourceId, sources } = get()
-        if (isBuiltinActive(activeSourceId)) return
+        const { activeSourceId, sources, setPath, loadDir } = get()
+        
+        // 内置源：仅更新 path，重新加载
+        if (isBuiltinActive(activeSourceId)) {
+          setPath(newPath)
+          await loadDir()
+          return
+        }
 
         // GitHub 源：仅更新 path，重新加载
         const source = sources.find(s => s.id === activeSourceId)
         if (source?.type === 'github') {
-          get().setPath(newPath)
-          await get().loadDir()
+          setPath(newPath)
+          await loadDir()
           return
         }
 
         // 本地源：从 root 逐层解析
-        const { root, setDir, setPath, loadDir } = get()
+        const { root, setDir } = get()
         if (!root) return
 
         setPath(newPath)

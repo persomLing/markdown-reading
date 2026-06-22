@@ -106,8 +106,9 @@ export function buildVirtualFS(files: FileList | File[]): VirtualDirectoryHandle
       root.name = parts[0]
     }
 
-    // 遍历中间目录
-    for (let i = 0; i < parts.length - 1; i++) {
+    // 遍历中间目录（跳过第一段，因为它已经是 root.name）
+    const startIndex = parts.length > 1 && root.name === parts[0] ? 1 : 0
+    for (let i = startIndex; i < parts.length - 1; i++) {
       const dirName = parts[i]
       if (!current.children.has(dirName)) {
         current.children.set(dirName, { kind: 'directory', name: dirName, children: new Map(), files: new Map() })
