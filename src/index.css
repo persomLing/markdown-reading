@@ -202,26 +202,22 @@
 
 [data-theme="bamboo"] .reader-bg {
   background-image:
-    linear-gradient(rgba(243, 246, 239, 0.5), rgba(243, 246, 239, 0.5)),
-    url("./assets/竹青色_竹影背景.webp");
+    linear-gradient(rgba(243, 246, 239, 0.5), rgba(243, 246, 239, 0.5)), url("./assets/竹青色_竹影背景.webp");
 }
 
 [data-theme="paper"] .reader-bg {
   background-image:
-    linear-gradient(rgba(245, 240, 225, 0.5), rgba(245, 240, 225, 0.5)),
-    url("./assets/纸质感_旧纸背景.webp");
+    linear-gradient(rgba(245, 240, 225, 0.5), rgba(245, 240, 225, 0.5)), url("./assets/纸质感_旧纸背景.webp");
 }
 
 [data-theme="porcelain"] .reader-bg {
   background-image:
-    linear-gradient(rgba(245, 248, 250, 0.5), rgba(245, 248, 250, 0.5)),
-    url("./assets/瓷片感_白瓷冰裂纹.webp");
+    linear-gradient(rgba(245, 248, 250, 0.5), rgba(245, 248, 250, 0.5)), url("./assets/瓷片感_白瓷冰裂纹.webp");
 }
 
 [data-theme="sunlight"] .reader-bg {
   background-image:
-    linear-gradient(rgba(251, 245, 230, 0.5), rgba(251, 245, 230, 0.5)),
-    url("./assets/阳光墨水_晴天背景.webp");
+    linear-gradient(rgba(251, 245, 230, 0.5), rgba(251, 245, 230, 0.5)), url("./assets/阳光墨水_晴天背景.webp");
 }
 
 /* ====================== Reset ====================== */
@@ -1426,7 +1422,7 @@ input {
 }
 
 .markdown-body code {
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--reader-font, "Noto Serif SC"), "JetBrains Mono", monospace;
   background: var(--code-bg);
   padding: 0.2em 0.4em;
   border-radius: 4px;
@@ -2380,7 +2376,7 @@ input {
 .code-lang {
   font-size: 0.78rem;
   color: var(--t3);
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--reader-font, "Noto Serif SC"), "JetBrains Mono", monospace;
 }
 
 .copy-btn {
