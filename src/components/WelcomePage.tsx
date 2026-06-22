@@ -1,14 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useAppStore } from '../store'
+import { showToast } from './Toast'
 
 const WelcomePage: React.FC = () => {
   const [showPwd, setShowPwd] = useState(false)
   const [pwd, setPwd] = useState('')
   const [pwdError, setPwdError] = useState(false)
+  const [showGithub, setShowGithub] = useState(false)
+  const [githubUrl, setGithubUrl] = useState('')
+  const [githubBusy, setGithubBusy] = useState(false)
   const [busy, setBusy] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const { verifyOwner, selectLocalFolder, selectLocalFolderFromInput, switchSource, setCurrentPage, hasNativeFS, isOwner } = useAppStore()
+  const { verifyOwner, selectLocalFolder, selectLocalFolderFromInput, switchSource, setCurrentPage, hasNativeFS, isOwner, addGitHubSource } = useAppStore()
 
   // 在 DOM 上设置 webkitdirectory（React 不识别该非标准属性）
   useEffect(() => {
@@ -93,6 +97,29 @@ const WelcomePage: React.FC = () => {
     })
   }
 
+  // 提交 GitHub 仓库地址
+  const handleGithubSubmit = async () => {
+    const url = githubUrl.trim()
+    if (!url) {
+      showToast('请输入 GitHub 仓库地址', 'error')
+      return
+    }
+    setGithubBusy(true)
+    try {
+      const result = await addGitHubSource(url)
+      if (result.ok) {
+        setShowGithub(false)
+        setCurrentPage('files')
+      } else {
+        showToast(result.error || '添加失败', 'error')
+      }
+    } catch (e) {
+      showToast('网络错误，请重试', 'error')
+    } finally {
+      setGithubBusy(false)
+    }
+  }
+
   return (
     <div className="welcome-page">
       <div className="welcome-wrap">
@@ -111,6 +138,13 @@ const WelcomePage: React.FC = () => {
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
             选择文件夹
+          </button>
+
+          <button className="btn-owner" onClick={() => { setShowGithub(true); setGithubUrl('') }} disabled={busy}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+            </svg>
+            GitHub 仓库
           </button>
 
           <button className="btn-owner" onClick={handleOwnerClick} disabled={busy}>
@@ -140,6 +174,51 @@ const WelcomePage: React.FC = () => {
         onChange={handleInputChange}
         accept=".md,.markdown,.txt,text/markdown,text/plain"
       />
+
+      {/* GitHub 仓库输入弹窗 */}
+      {showGithub && (
+        <div className="pwd-overlay" onClick={() => !githubBusy && setShowGithub(false)}>
+          <div className="pwd-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="pwd-head">
+              <div className="pwd-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+                </svg>
+              </div>
+              <h3>GitHub 仓库</h3>
+            </div>
+            <p className="pwd-desc">输入公共仓库地址，浏览其中的 Markdown 文件</p>
+            <input
+              type="url"
+              className="pwd-input"
+              value={githubUrl}
+              autoFocus
+              disabled={githubBusy}
+              onChange={(e) => setGithubUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !githubBusy) handleGithubSubmit()
+                if (e.key === 'Escape' && !githubBusy) setShowGithub(false)
+              }}
+              placeholder="https://github.com/owner/repo"
+            />
+            {githubBusy && (
+              <div className="github-loading">
+                <div className="github-loading-spinner" />
+                <p className="github-loading-text">正在从 GitHub 获取仓库内容...</p>
+                <p className="github-loading-hint">首次加载可能需要几秒钟</p>
+              </div>
+            )}
+            <div className="pwd-actions">
+              <button className="pwd-cancel" onClick={() => setShowGithub(false)} disabled={githubBusy}>
+                取消
+              </button>
+              <button className="pwd-confirm" onClick={handleGithubSubmit} disabled={githubBusy}>
+                {githubBusy ? '加载中...' : '打开'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 密码验证弹窗 */}
       {showPwd && (
