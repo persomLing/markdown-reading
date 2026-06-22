@@ -35,6 +35,7 @@ const FileBrowser: React.FC = () => {
     removeSource,
     addGitHubSource,
     hasNativeFS,
+    setCurrentPage,
   } = useAppStore()
 
   // 当 FileBrowser 重新挂载时，如果 source 还在但 entries 为空则重新加载
@@ -145,6 +146,12 @@ const FileBrowser: React.FC = () => {
             {rootName}
           </div>
           <div className="files-actions">
+            <button onClick={() => setCurrentPage('welcome')} title="返回封面">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
+            </button>
             <button onClick={handleRefresh} title="刷新">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="23 4 23 10 17 10" />
@@ -220,11 +227,11 @@ const FileBrowser: React.FC = () => {
         </div>
       </div>
 
-      {/* 继续阅读卡片 */}
-      {lastFile && lastFile.path && (
+      {/* 继续阅读卡片：仅当来源仍存在时展示 */}
+      {lastFile && lastFile.path && (!lastFile.sourceId || sources.some(s => s.id === lastFile.sourceId)) && (
         <div 
           className="continue-card"
-          onClick={() => openFileByPath(lastFile.path)}
+          onClick={() => openFileByPath(lastFile.path, lastFile.sourceId, lastFile.sourceType)}
         >
           <div className="cc-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
