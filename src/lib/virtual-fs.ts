@@ -152,3 +152,39 @@ export async function tryShowDirectoryPicker(): Promise<FileSystemDirectoryHandl
     throw e
   }
 }
+
+// ==================== 从 IndexedDB 序列化数据重建虚拟文件系统 ====================
+
+interface SerializedFile {
+  name: string
+  content: string
+  size: number
+}
+
+interface SerializedDir {
+  name: string
+  children: SerializedDir[]
+  files: SerializedFile[]
+}
+
+function rebuildVDir(data: SerializedDir): VDir {
+  const dir: VDir = {
+    kind: 'directory',
+    name: data.name,
+    children: new Map(),
+    files: new Map(),
+  }
+  for (const child of data.children) {
+    dir.children.set(child.name, rebuildVDir(child))
+  }
+  for (const file of data.files) {
+    // 从存储的文本内容重建 File 对象
+    const blob = new Blob([file.content], { type: 'text/markdown' })
+    dir.files.set(file.name, new File([blob], file.name, { type: 'text/markdown' }))
+  }
+  return dir
+}
+
+export function rebuildVirtualFS(data: SerializedDir): VirtualDirectoryHandle {
+  return new VirtualDirectoryHandle(rebuildVDir(data))
+}

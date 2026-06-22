@@ -60,3 +60,98 @@ export async function ensurePermission(
   if ((await h.requestPermission?.(opts)) === 'granted') return true
   return false
 }
+
+// ==================== 虚拟文件系统持久化 ====================
+// 用于降级方案（<input> 选择的文件夹），将目录结构和文件内容序列化存入 IndexedDB
+const VFS_STORE = 'vfs'
+
+function openVFSDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME + '-vfs', 1)
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(VFS_STORE)) {
+        req.result.createObjectStore(VFS_STORE)
+      }
+    }
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+interface SerializedFile {
+  name: string
+  content: string
+  size: number
+}
+
+interface SerializedDir {
+  name: string
+  children: SerializedDir[]
+  files: SerializedFile[]
+}
+
+// 从 VirtualDirectoryHandle 递归序列化为可存储的 JSON
+async function serializeVFS(handle: any): Promise<SerializedDir> {
+  const dir: SerializedDir = { name: handle.name, children: [], files: [] }
+  try {
+    for await (const [name, entry] of handle.entries()) {
+      if (entry.kind === 'directory') {
+        dir.children.push(await serializeVFS(entry))
+      } else if (entry.kind === 'file') {
+        try {
+          const file = await entry.getFile()
+          const content = await file.text()
+          dir.files.push({ name, content, size: file.size })
+        } catch (e) {
+          console.warn(`跳过无法读取的文件: ${name}`, e)
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('序列化 VFS 目录失败:', e)
+  }
+  return dir
+}
+
+export async function saveVirtualFS(id: string, handle: any): Promise<void> {
+  const data = await serializeVFS(handle)
+  const db = await openVFSDB()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(VFS_STORE, 'readwrite')
+      tx.objectStore(VFS_STORE).put(data, id)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  } finally {
+    db.close()
+  }
+}
+
+export async function restoreVirtualFS(id: string): Promise<SerializedDir | null> {
+  const db = await openVFSDB()
+  try {
+    return await new Promise<SerializedDir | null>((resolve, reject) => {
+      const tx = db.transaction(VFS_STORE, 'readonly')
+      const req = tx.objectStore(VFS_STORE).get(id)
+      req.onsuccess = () => resolve((req.result as SerializedDir) || null)
+      req.onerror = () => reject(req.error)
+    })
+  } finally {
+    db.close()
+  }
+}
+
+export async function deleteVirtualFS(id: string): Promise<void> {
+  const db = await openVFSDB()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(VFS_STORE, 'readwrite')
+      tx.objectStore(VFS_STORE).delete(id)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  } finally {
+    db.close()
+  }
+}

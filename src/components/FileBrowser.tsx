@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react'
-import { useAppStore } from '../store'
+import { useAppStore, MAX_SOURCES } from '../store'
 import { showToast } from './Toast'
 import { getHandle, ensurePermission } from '../lib/idb'
 
@@ -10,6 +10,8 @@ const FileBrowser: React.FC = () => {
   const [githubUrl, setGithubUrl] = useState('')
   const [githubBusy, setGithubBusy] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [showLimitModal, setShowLimitModal] = useState(false)
+  const [pendingRetry, setPendingRetry] = useState<'native' | 'input' | null>(null)
 
   useEffect(() => {
     const el = fileInputRef.current
@@ -48,25 +50,38 @@ const FileBrowser: React.FC = () => {
       const store = useAppStore.getState()
       const localSources = store.sources.filter(s => s.type === 'local')
       const invalidSources: string[] = []
+      const permissionFailedSources: string[] = []
       
       // 检查所有本地文件源
       for (const source of localSources) {
+        // 优先检查内存缓存（降级方案添加的源只存在于 virtualHandles）
+        if (store.hasVirtualHandle(source.id)) {
+          continue
+        }
+        
+        // 再检查 IndexedDB（原生API添加的源）
         const handle = await getHandle(source.id)
         if (!handle) {
+          // 内存和 IndexedDB 都没有，标记为失效
           invalidSources.push(source.name)
           await store.removeSource(source.id)
         } else {
           const ok = await ensurePermission(handle, true)
           if (!ok) {
-            invalidSources.push(source.name)
-            await store.removeSource(source.id)
+            // 权限失败不自动删除，提示用户手动处理
+            permissionFailedSources.push(source.name)
           }
         }
       }
       
-      // 如果有无效源，弹窗提示
+      // 提示已失效的源
       if (invalidSources.length > 0) {
         showToast(`以下文件源已失效并已移除：${invalidSources.join('、')}`, 'info')
+      }
+      
+      // 提示权限失败的源
+      if (permissionFailedSources.length > 0) {
+        showToast(`以下文件源权限已过期，请重新选择：${permissionFailedSources.join('、')}`, 'info')
       }
       
       // 加载目录
@@ -90,8 +105,13 @@ const FileBrowser: React.FC = () => {
   const handleChangeFolder = async () => {
     if (hasNativeFS()) {
       try {
-        const ok = await selectLocalFolder()
-        if (ok) return
+        const result = await selectLocalFolder()
+        if (result === true) return
+        if (result === 'limit_reached') {
+          setPendingRetry('native')
+          setShowLimitModal(true)
+          return
+        }
       } catch (e) {
         if ((e as Error).name !== 'AbortError') {
           console.warn('原生文件夹选择不可用，降级到 input:', e)
@@ -108,7 +128,12 @@ const FileBrowser: React.FC = () => {
     const files = e.target.files
     if (!files || files.length === 0) return
     try {
-      await selectLocalFolderFromInput(files)
+      const result = await selectLocalFolderFromInput(files)
+      if (result === 'limit_reached') {
+        setPendingRetry('input')
+        setShowLimitModal(true)
+        showToast('文件源数量已达上限，请先删除一个旧源', 'info')
+      }
     } catch (err) {
       console.error('读取文件夹失败:', err)
     } finally {
@@ -118,16 +143,23 @@ const FileBrowser: React.FC = () => {
 
   const handleSwitchSource = async (id: string) => {
     try {
-      const ok = await switchSource(id)
-      if (!ok) {
-        const source = sources.find(s => s.id === id)
-        if (source && source.type === 'local') {
-          showToast(`文件源「${source.name}」已失效，将自动移除`, 'info')
-          await removeSource(id)
-        }
+      const result = await switchSource(id)
+      if (result === 'success') return
+
+      const source = sources.find(s => s.id === id)
+      if (!source) return
+
+      if (result === 'permission_denied') {
+        // 权限被拒绝：不自动删除，提示用户重新授权
+        showToast(`文件源「${source.name}」权限已过期，请点击重新选择文件夹`, 'info')
+      } else {
+        // 源找不到：标记失效并移除
+        showToast(`文件源「${source.name}」已失效，将自动移除`, 'info')
+        await removeSource(id)
       }
     } catch (e) {
       console.error('切换来源失败:', e)
+      showToast('切换来源失败，请重试', 'error')
     }
   }
 
@@ -354,6 +386,58 @@ const FileBrowser: React.FC = () => {
         onChange={handleInputChange}
         accept=".md,.markdown,.txt,text/markdown,text/plain"
       />
+
+      {/* 源数量上限弹窗 */}
+      {showLimitModal && (
+        <div className="pwd-overlay" onClick={() => { setShowLimitModal(false); setPendingRetry(null) }}>
+          <div className="pwd-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="pwd-head">
+              <div className="pwd-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              </div>
+              <h3>文件源数量已达上限</h3>
+            </div>
+            <p className="pwd-desc">最多可添加 {MAX_SOURCES} 个文件源（不含每日精读），请选择一个要删除的源：</p>
+            <div className="source-limit-list">
+              {sources.filter(s => s.type !== 'builtin').map(s => (
+                <div key={s.id} className="source-limit-item">
+                  <span className="source-limit-name">
+                    {s.type === 'github' && '🔗 '}
+                    {s.type === 'local' && '📁 '}
+                    {s.name}
+                  </span>
+                  <button
+                    className="source-limit-del"
+                    onClick={async () => {
+                      await removeSource(s.id)
+                      setShowLimitModal(false)
+                      // 自动重试添加
+                      if (pendingRetry === 'native') {
+                        setPendingRetry(null)
+                        setTimeout(() => handleChangeFolder(), 100)
+                      } else if (pendingRetry === 'input') {
+                        setPendingRetry(null)
+                        setTimeout(() => fileInputRef.current?.click(), 100)
+                      }
+                    }}
+                  >
+                    删除
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="pwd-actions">
+              <button className="pwd-cancel" onClick={() => { setShowLimitModal(false); setPendingRetry(null) }}>
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* GitHub 仓库输入弹窗 */}
       {showGithub && (

@@ -822,8 +822,12 @@ input {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .files-actions button svg {
@@ -2997,4 +3001,57 @@ input {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* 源数量上限弹窗列表 */
+.source-limit-list {
+  text-align: left;
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+
+.source-limit-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  transition: border-color 0.2s;
+}
+
+.source-limit-item:hover {
+  border-color: var(--accent);
+}
+
+.source-limit-name {
+  font-size: 0.88rem;
+  color: var(--t1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  margin-right: 10px;
+}
+
+.source-limit-del {
+  flex-shrink: 0;
+  padding: 5px 14px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.source-limit-del:hover {
+  background: var(--danger);
+  color: #fff;
 }

@@ -2,12 +2,12 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { AppState, Settings, HistoryItem, CurrentFile, FileEntry, PageType, ThemeName, FontFamily, FileSource } from '../types'
 import { BUILTIN_FILES, BUILTIN_SOURCE, isBuiltinActive } from '../builtin'
-import { saveHandle, getHandle, deleteHandle, ensurePermission } from '../lib/idb'
-import { buildVirtualFS, supportsNativeFS } from '../lib/virtual-fs'
+import { saveHandle, getHandle, deleteHandle, ensurePermission, saveVirtualFS, restoreVirtualFS, deleteVirtualFS } from '../lib/idb'
+import { buildVirtualFS, supportsNativeFS, rebuildVirtualFS } from '../lib/virtual-fs'
 import { parseGitHubUrl, fetchDefaultBranch, fetchRepoContents, fetchFileContent } from '../lib/github'
 
 const OWNER_PASSWORD = 'sy225'
-const MAX_SOURCES = 5
+export const MAX_SOURCES = 5
 
 // 内存缓存虚拟 handle（不能进 localStorage，页面刷新后丢失）
 const virtualHandles = new Map<string, FileSystemDirectoryHandle>()
@@ -63,12 +63,13 @@ interface AppStore extends AppState {
 
   // 文件来源操作
   verifyOwner: (password: string) => boolean
-  selectLocalFolder: () => Promise<boolean>
-  selectLocalFolderFromInput: (files: FileList) => Promise<boolean>
+  selectLocalFolder: () => Promise<boolean | 'limit_reached'>
+  selectLocalFolderFromInput: (files: FileList) => Promise<boolean | 'limit_reached'>
   addGitHubSource: (url: string) => Promise<{ ok: boolean; error?: string }>
-  switchSource: (id: string) => Promise<boolean>
+  switchSource: (id: string) => Promise<'success' | 'not_found' | 'permission_denied'>
   removeSource: (id: string) => Promise<void>
   hasNativeFS: () => boolean
+  hasVirtualHandle: (id: string) => boolean
 
   // 加载状态
   loading: boolean
@@ -436,7 +437,8 @@ export const useAppStore = create<AppStore>()(
               await get().loadDir()
             } else {
               // 本地源：切换并加载
-              await get().switchSource(sourceId)
+              const result = await get().switchSource(sourceId)
+              if (result !== 'success') { setLoading(false); return false }
             }
           }
 
@@ -544,7 +546,7 @@ export const useAppStore = create<AppStore>()(
 
         // 检查来源总数（不含内置）
         const nonBuiltinCount = get().sources.filter(s => s.type !== 'builtin').length
-        if (nonBuiltinCount >= MAX_SOURCES) return false
+        if (nonBuiltinCount >= MAX_SOURCES) return 'limit_reached'
 
         const id = 'local-' + Date.now()
         await saveHandle(id, handle as FileSystemDirectoryHandle)
@@ -576,6 +578,7 @@ export const useAppStore = create<AppStore>()(
         const existingSource = get().sources.find((s) => s.type === 'local' && s.name === folderName)
         if (existingSource) {
           virtualHandles.set(existingSource.id, vRoot)
+          await saveVirtualFS(existingSource.id, vRoot)
           set({
             activeSourceId: existingSource.id,
             root: vRoot,
@@ -588,10 +591,12 @@ export const useAppStore = create<AppStore>()(
         }
 
         const nonBuiltinCount = get().sources.filter(s => s.type !== 'builtin').length
-        if (nonBuiltinCount >= MAX_SOURCES) return false
+        if (nonBuiltinCount >= MAX_SOURCES) return 'limit_reached'
 
         const id = 'local-' + Date.now()
         virtualHandles.set(id, vRoot)
+        // 持久化虚拟文件系统到 IndexedDB，刷新后可恢复
+        await saveVirtualFS(id, vRoot)
         const newSource: FileSource = { id, type: 'local', name: folderName }
 
         set((state) => {
@@ -643,15 +648,17 @@ export const useAppStore = create<AppStore>()(
             // 已存在则直接切换
             const subdir = parsed.subdir
             const initialPath = subdir ? subdir.split('/') : []
-            set({
+            // 通过 set() 更新 repoUrl（可能分支变了），避免直接 mutation 状态
+            set((state) => ({
               activeSourceId: existingSource.id,
               root: null,
               dir: null,
               path: initialPath,
               rootName: repoName,
-            })
-            // 更新 repoUrl（可能分支变了）
-            existingSource.repoUrl = normalizedUrl
+              sources: state.sources.map(s =>
+                s.id === existingSource.id ? { ...s, repoUrl: normalizedUrl } : s
+              ),
+            }))
             await get().loadDir()
             return { ok: true }
           }
@@ -687,7 +694,7 @@ export const useAppStore = create<AppStore>()(
         setLoading(true)
         try {
           const source = get().sources.find((s) => s.id === id)
-          if (!source) return false
+          if (!source) return 'not_found'
 
           if (source.type === 'builtin') {
             set({
@@ -698,13 +705,13 @@ export const useAppStore = create<AppStore>()(
               rootName: source.name,
             })
             await get().loadDir()
-            return true
+            return 'success'
           }
 
           // GitHub 源：解析 URL 获取初始路径
           if (source.type === 'github') {
             const info = getGitHubInfo(source)
-            if (!info) return false
+            if (!info) return 'not_found'
             const subdir = info.subdir
             const initialPath = subdir ? subdir.split('/') : []
             set({
@@ -715,10 +722,10 @@ export const useAppStore = create<AppStore>()(
               rootName: source.name,
             })
             await get().loadDir()
-            return true
+            return 'success'
           }
 
-          // 本地源：优先内存缓存（虚拟 handle），再从 IndexedDB（原生 handle）
+          // 本地源：优先内存缓存，再原生 IndexedDB，最后 VFS IndexedDB
           const cached = virtualHandles.get(id)
           if (cached) {
             set({
@@ -729,29 +736,48 @@ export const useAppStore = create<AppStore>()(
               rootName: source.name,
             })
             await get().loadDir()
-            return true
+            return 'success'
           }
 
           const handle = await getHandle(id)
-          if (!handle) {
-            // 文件源找不到，返回false（不自动删除，由调用方处理）
-            return false
-          }
-          const ok = await ensurePermission(handle, true)
-          if (!ok) {
-            // 权限验证失败，返回false（不自动删除，由调用方处理）
-            return false
+          if (handle) {
+            const ok = await ensurePermission(handle, true)
+            if (!ok) {
+              return 'permission_denied'
+            }
+            set({
+              activeSourceId: id,
+              root: handle,
+              dir: handle,
+              path: [],
+              rootName: source.name,
+            })
+            await get().loadDir()
+            return 'success'
           }
 
-          set({
-            activeSourceId: id,
-            root: handle,
-            dir: handle,
-            path: [],
-            rootName: source.name,
-          })
-          await get().loadDir()
-          return true
+          // 尝试从 VFS IndexedDB 恢复（降级方案添加的源）
+          try {
+            const vfsData = await restoreVirtualFS(id)
+            if (vfsData) {
+              const vRoot = rebuildVirtualFS(vfsData)
+              virtualHandles.set(id, vRoot)
+              set({
+                activeSourceId: id,
+                root: vRoot,
+                dir: vRoot,
+                path: [],
+                rootName: source.name,
+              })
+              await get().loadDir()
+              return 'success'
+            }
+          } catch (e) {
+            console.warn('VFS 恢复失败:', e)
+          }
+
+          // 三种方式都找不到
+          return 'not_found'
         } finally {
           setLoading(false)
         }
@@ -763,25 +789,38 @@ export const useAppStore = create<AppStore>()(
         // 禁止删除内置每日精读
         if (source.type === 'builtin') return
 
-        // 本地源清理 handle 缓存
+        // 本地源清理 handle 缓存和 VFS 数据
         if (source.type === 'local') {
           virtualHandles.delete(id)
           await deleteHandle(id)
+          await deleteVirtualFS(id)
         }
 
         set((state) => {
           const sources = state.sources.filter((s) => s.id !== id)
-          const patch: Partial<AppState> = { sources }
+          const patch: Partial<AppState> = {
+            sources,
+            // H3: 清理关联的历史记录和最后阅读文件
+            history: state.history.filter(h => h.sourceId !== id),
+          }
+          if (state.lastFile?.sourceId === id) {
+            patch.lastFile = null
+          }
           if (state.activeSourceId === id) {
             patch.activeSourceId = null
             patch.entries = []
             patch.rootName = ''
+            // H2: 清理孤立的 handle 引用
+            patch.root = null
+            patch.dir = null
+            patch.path = []
           }
           return patch as any
         })
       },
 
       hasNativeFS: () => supportsNativeFS(),
+      hasVirtualHandle: (id: string) => virtualHandles.has(id),
 
       init: async () => {
         const saved = localStorage.getItem('app-storage')
@@ -818,13 +857,37 @@ export const useAppStore = create<AppStore>()(
             const store = useAppStore.getState()
             if (store.entries.length === 0) {
               const source = state.sources?.find((s: FileSource) => s.id === state.activeSourceId)
-              // 本地源：先从 IndexedDB 恢复句柄
+              // 本地源：先从内存缓存，再从原生 IndexedDB，最后从 VFS IndexedDB 恢复
               if (source?.type === 'local') {
-                getHandle(state.activeSourceId).then((handle) => {
+                // 1. 优先检查内存缓存（同会话内导航回来）
+                const cached = virtualHandles.get(state.activeSourceId!)
+                if (cached) {
+                  store.setRoot(cached)
+                  store.setDir(cached)
+                  store.loadDir()
+                  return
+                }
+                // 2. 尝试从原生 IndexedDB 恢复（桌面 Chrome 通过 showDirectoryPicker 添加的源）
+                getHandle(state.activeSourceId).then(async (handle) => {
                   if (handle) {
                     store.setRoot(handle)
                     store.setDir(handle)
                     store.loadDir()
+                    return
+                  }
+                  // 3. 尝试从 VFS IndexedDB 恢复（手机/降级方案添加的源）
+                  try {
+                    const vfsData = await restoreVirtualFS(state.activeSourceId!)
+                    if (vfsData) {
+                      const vRoot = rebuildVirtualFS(vfsData)
+                      virtualHandles.set(state.activeSourceId!, vRoot)
+                      store.setRoot(vRoot)
+                      store.setDir(vRoot)
+                      store.loadDir()
+                    }
+                    // 都找不到时不阻塞，checkSources 会处理并提示用户
+                  } catch (e) {
+                    console.warn('VFS 恢复失败:', e)
                   }
                 })
               } else {
