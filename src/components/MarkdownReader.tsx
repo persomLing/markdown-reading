@@ -50,7 +50,9 @@ const MarkdownReader: React.FC = () => {
     searchOpen,
     setCurrentPage, 
     toggleToc, 
-    toggleSearch 
+    toggleSearch,
+    sources,
+    activeSourceId,
   } = useAppStore()
   
   const [toc, setToc] = useState<TocItem[]>([])
@@ -107,7 +109,55 @@ const MarkdownReader: React.FC = () => {
     if (!curFile || !contentRef.current) return
 
     const renderMarkdown = async () => {
-      const html = await marked(curFile.content)
+      // GitHub 源：构建图片路径重写所需的上下文
+      const source = sources.find(s => s.id === activeSourceId)
+      let baseRaw = ''
+      let dirRaw = ''
+
+      if (source?.type === 'github' && source.repoUrl) {
+        const m = source.repoUrl.match(/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)/)
+        if (m) {
+          const [, owner, repo, branch] = m
+          baseRaw = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/`
+          const fileDir = curFile.path.includes('/')
+            ? curFile.path.substring(0, curFile.path.lastIndexOf('/'))
+            : ''
+          dirRaw = fileDir ? baseRaw + fileDir + '/' : baseRaw
+        }
+      }
+
+      let html: string
+      if (baseRaw) {
+        // 为 GitHub 源创建自定义渲染器，重写图片 URL
+        const customRenderer = new marked.Renderer()
+        customRenderer.code = renderer.code.bind(customRenderer)
+        customRenderer.image = function (href: string, title: string | null, text: string): string {
+          let src = href
+          if (src && !/^https?:\/\//i.test(src) && !src.startsWith('data:')) {
+            if (src.startsWith('/')) {
+              src = baseRaw + src.substring(1)
+            } else if (src.startsWith('./')) {
+              src = dirRaw + src.substring(2)
+            } else if (src.startsWith('../')) {
+              // 处理 ../ 相对路径
+              const parts = curFile.path.split('/').slice(0, -1)
+              let rel = src
+              while (rel.startsWith('../')) {
+                parts.pop()
+                rel = rel.substring(3)
+              }
+              src = baseRaw + (parts.length ? parts.join('/') + '/' : '') + rel
+            } else {
+              src = dirRaw + src
+            }
+          }
+          const titleAttr = title ? ` title="${title}"` : ''
+          return `<img src="${src}" alt="${text}"${titleAttr}>`
+        }
+        html = await marked.parse(curFile.content, { renderer: customRenderer })
+      } else {
+        html = await marked(curFile.content)
+      }
       if (contentRef.current) {
         contentRef.current.innerHTML = html
 
