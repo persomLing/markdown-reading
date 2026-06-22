@@ -60,6 +60,7 @@ const MarkdownReader: React.FC = () => {
     toggleSearch,
     sources,
     activeSourceId,
+    setLastFile,
   } = useAppStore()
   
   const [toc, setToc] = useState<TocItem[]>([])
@@ -612,7 +613,10 @@ const MarkdownReader: React.FC = () => {
 
       {/* 头部 */}
       <div className="reader-header">
-        <button onClick={() => setCurrentPage('files')} className="back-btn">
+        <button onClick={() => {
+          setLastFile(null)
+          setCurrentPage('files')
+        }} className="back-btn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="15 18 9 12 15 6" />
           </svg>

@@ -694,9 +694,17 @@ export const useAppStore = create<AppStore>()(
           }
 
           const handle = await getHandle(id)
-          if (!handle) return false
+          if (!handle) {
+            // 文件源找不到，自动删除
+            await get().removeSource(id)
+            return false
+          }
           const ok = await ensurePermission(handle, true)
-          if (!ok) return false
+          if (!ok) {
+            // 权限验证失败，自动删除
+            await get().removeSource(id)
+            return false
+          }
 
           set({
             activeSourceId: id,
