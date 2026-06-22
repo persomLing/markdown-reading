@@ -1,6 +1,7 @@
 import React from 'react'
 import { useAppStore } from '../store'
 import { ThemeName, FontFamily } from '../types'
+import { showToast } from './Toast'
 
 const THEMES: { id: ThemeName; name: string; desc: string; bg: string; surface: string; accent: string; text: string }[] = [
   { id: 'bamboo', name: '竹青', desc: '竹林清韵', bg: '#f3f6ef', surface: '#eaefe3', accent: '#789262', text: '#424c50' },
@@ -19,7 +20,8 @@ const FONTS: { id: FontFamily; name: string; sample: string; family: string }[] 
 ]
 
 const SettingsPage: React.FC = () => {
-  const { settings, setTheme, setFontFamily, setFontSize, setLineHeight, setCurrentPage } = useAppStore()
+  const { settings, setTheme, setFontFamily, setFontSize, setLineHeight, setGithubToken, setCurrentPage } = useAppStore()
+  const [tokenInput, setTokenInput] = React.useState(settings.githubToken || '')
 
   const handleThemeChange = (theme: ThemeName) => {
     setTheme(theme)
@@ -181,6 +183,47 @@ const SettingsPage: React.FC = () => {
               <div>永和九年，岁在癸丑，暮春之初。</div>
               <div>群贤毕至，少长咸集。</div>
             </div>
+          </div>
+        </div>
+
+        {/* GitHub */}
+        <div className="setting-group">
+          <h3>GitHub</h3>
+          <div className="setting-card">
+            <div className="setting-card-head">
+              <div className="setting-title">GitHub Token</div>
+              <div className="setting-desc">可选填入，提升 API 速率限制（60→5000 次/小时）</div>
+            </div>
+            <div className="gh-token-row">
+              <input
+                type="password"
+                className="pwd-input"
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+                placeholder="ghp_xxxx 或 github_pat_xxxx"
+              />
+              <button
+                className="gh-token-save"
+                onClick={() => {
+                  setGithubToken(tokenInput)
+                  showToast('Token 已保存', 'success')
+                }}
+              >
+                保存
+              </button>
+            </div>
+            {settings.githubToken && (
+              <button
+                className="gh-token-clear"
+                onClick={() => {
+                  setTokenInput('')
+                  setGithubToken('')
+                  showToast('Token 已清除', 'success')
+                }}
+              >
+                清除 Token
+              </button>
+            )}
           </div>
         </div>
 
