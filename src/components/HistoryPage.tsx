@@ -1,10 +1,16 @@
 import React, { useState, useMemo } from 'react'
 import { useAppStore } from '../store'
 import { showToast } from './Toast'
+import { HistoryItem } from '../types'
 
 const HistoryPage: React.FC = () => {
-  const { history, openFileByPath, clearHistory, deleteHistoryItem } = useAppStore()
+  const { history, openFileByPath, clearHistory, deleteHistoryItem, sources } = useAppStore()
   const [searchQuery, setSearchQuery] = useState('')
+  const [confirmModal, setConfirmModal] = useState<{
+    title: string
+    message: string
+    onConfirm: () => void
+  } | null>(null)
 
   const formatDate = (ts: number) => {
     const date = new Date(ts)
@@ -64,6 +70,46 @@ const HistoryPage: React.FC = () => {
     )
   }
 
+  const getSourceBadge = (item: HistoryItem) => {
+    const type = item.sourceType
+    if (type === 'builtin') return <span className="hi-badge badge-builtin">精读</span>
+    if (type === 'github') return <span className="hi-badge badge-github">GitHub</span>
+    return null
+  }
+
+  const handleItemClick = async (item: HistoryItem) => {
+    // 检查 source 是否还存在
+    if (item.sourceId) {
+      const sourceExists = sources.some(s => s.id === item.sourceId)
+      if (!sourceExists) {
+        setConfirmModal({
+          title: '来源已删除',
+          message: '该记录的来源已被删除，是否删除此历史记录？',
+          onConfirm: () => {
+            deleteHistoryItem(item.path)
+            showToast('已删除', 'success')
+            setConfirmModal(null)
+          },
+        })
+        return
+      }
+    }
+
+    // 尝试打开文件
+    const ok = await openFileByPath(item.path, item.sourceId, item.sourceType)
+    if (!ok) {
+      setConfirmModal({
+        title: '文件无法打开',
+        message: '文件可能已移动或删除，是否删除此历史记录？',
+        onConfirm: () => {
+          deleteHistoryItem(item.path)
+          showToast('已删除', 'success')
+          setConfirmModal(null)
+        },
+      })
+    }
+  }
+
   return (
     <div className="history-page">
       {/* 头部 */}
@@ -113,11 +159,14 @@ const HistoryPage: React.FC = () => {
             <div
               key={item.id}
               className="history-item"
-              onClick={() => openFileByPath(item.path)}
+              onClick={() => handleItemClick(item)}
             >
               <div className="hi-icon">
                 {getFileIcon(item.name)}
               </div>
+              {getSourceBadge(item) && (
+                <div className="hi-badge-wrap">{getSourceBadge(item)}</div>
+              )}
               <div className="hi-info">
                 <div className="hi-name">{item.name}</div>
                 <div className="hi-meta">
@@ -140,6 +189,33 @@ const HistoryPage: React.FC = () => {
           ))
         )}
       </div>
+
+      {/* 确认弹窗 */}
+      {confirmModal && (
+        <div className="pwd-overlay" onClick={() => setConfirmModal(null)}>
+          <div className="pwd-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="pwd-head">
+              <div className="pwd-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              </div>
+              <h3>{confirmModal.title}</h3>
+            </div>
+            <p className="pwd-desc">{confirmModal.message}</p>
+            <div className="pwd-actions">
+              <button className="pwd-cancel" onClick={() => setConfirmModal(null)}>
+                取消
+              </button>
+              <button className="pwd-confirm" onClick={confirmModal.onConfirm}>
+                删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
