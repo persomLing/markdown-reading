@@ -9,7 +9,7 @@ import BottomNav from './components/BottomNav'
 import Toast from './components/Toast'
 
 const App: React.FC = () => {
-  const { currentPage, settings, loading } = useAppStore()
+  const { currentPage, settings, loading, curFile } = useAppStore()
   const restoreAttempted = useRef(false)
 
   useEffect(() => {
@@ -43,7 +43,20 @@ const App: React.FC = () => {
     })
   }, [currentPage])
 
+  // 刷新恢复中：reader 页面但文件还没加载好，显示加载动画避免"未选择文件"闪烁
+  const isRestoring = currentPage === 'reader' && !curFile
+
   const renderPage = () => {
+    if (isRestoring) {
+      return (
+        <div className="app-restoring">
+          <div className="global-loading-box">
+            <div className="global-loading-spinner" />
+            <p className="global-loading-text">恢复阅读...</p>
+          </div>
+        </div>
+      )
+    }
     switch (currentPage) {
       case 'welcome':
         return <WelcomePage />

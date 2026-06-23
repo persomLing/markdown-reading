@@ -3055,3 +3055,15 @@ input {
   background: var(--danger);
   color: #fff;
 }
+
+/* 刷新后恢复阅读占位 */
+.app-restoring {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  animation: fadeIn 0.15s ease;
+}
