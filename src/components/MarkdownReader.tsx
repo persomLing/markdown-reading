@@ -5,6 +5,9 @@ import html2canvas from 'html2canvas'
 import { useAppStore } from '../store'
 import { showToast } from './Toast'
 
+// 检测微信内置浏览器
+const isWeChat = /MicroMessenger/i.test(navigator.userAgent)
+
 // 配置 marked
 const renderer = new marked.Renderer()
 
@@ -729,10 +732,16 @@ const MarkdownReader: React.FC = () => {
         <div className="screenshot-overlay" onClick={() => setScreenshot(null)}>
           <div className="screenshot-modal" onClick={(e) => e.stopPropagation()}>
             <img src={screenshot} alt="screenshot" />
-            <div className="screenshot-actions">
-              <button className="btn-cancel" onClick={() => setScreenshot(null)}>关闭</button>
-              <button className="btn-save" onClick={saveScreenshot}>保存图片</button>
-            </div>
+            {isWeChat ? (
+              <div className="screenshot-wechat-tip">
+                <p>长按图片保存到相册</p>
+              </div>
+            ) : (
+              <div className="screenshot-actions">
+                <button className="btn-cancel" onClick={() => setScreenshot(null)}>关闭</button>
+                <button className="btn-save" onClick={saveScreenshot}>保存图片</button>
+              </div>
+            )}
           </div>
         </div>
       )}

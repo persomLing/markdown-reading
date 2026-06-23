@@ -2800,6 +2800,18 @@ input {
   background: var(--accent-hover);
 }
 
+.screenshot-wechat-tip {
+  text-align: center;
+  padding: 12px 0 4px;
+}
+
+.screenshot-wechat-tip p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--t2);
+  animation: fadeIn 0.3s ease;
+}
+
 /* ====================== History Page ====================== */
 .history-search {
   display: flex;
