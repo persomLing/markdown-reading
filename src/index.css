@@ -2763,8 +2763,70 @@ input {
 
 .screenshot-modal img {
   max-width: 100%;
+  max-height: 55vh;
   border-radius: 8px;
   margin-bottom: 16px;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* 手机端：全屏展示原图可滚动 */
+.screenshot-fullscroll {
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 56px 28px 76px 28px;
+}
+
+.screenshot-close-btn {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  font-size: 1.6rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  cursor: pointer;
+}
+
+.screenshot-fullscroll img {
+  display: block;
+  margin: 0 auto;
+  border-radius: 8px;
+  border: 2px solid rgba(255,255,255,0.25);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+}
+
+/* 底部固定提示 */
+.screenshot-bottom-tip {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 14px 0;
+  text-align: center;
+  background: linear-gradient(transparent, rgba(0,0,0,0.6));
+  pointer-events: auto;
+  z-index: 1;
+}
+
+.screenshot-bottom-tip p {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 500;
+  color: #fff;
+  letter-spacing: 0.15em;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
 .screenshot-actions {
@@ -2798,18 +2860,6 @@ input {
 
 .btn-save:hover {
   background: var(--accent-hover);
-}
-
-.screenshot-wechat-tip {
-  text-align: center;
-  padding: 12px 0 4px;
-}
-
-.screenshot-wechat-tip p {
-  margin: 0;
-  font-size: 0.88rem;
-  color: var(--t2);
-  animation: fadeIn 0.3s ease;
 }
 
 /* ====================== History Page ====================== */

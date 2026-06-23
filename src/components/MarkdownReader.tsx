@@ -574,17 +574,41 @@ const MarkdownReader: React.FC = () => {
     if (!contentRef.current) return
     showToast('正在生成截图...', 'info')
     try {
-      const canvas = await html2canvas(contentRef.current, {
+      const el = contentRef.current
+      const origPadding = el.style.padding
+
+      // 临时加 padding，还原阅读页面边距效果
+      el.style.padding = '24px 20px'
+
+      const canvas = await html2canvas(el, {
         backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(),
-        scale: 2,
+        scale: 1,
         useCORS: true,
         logging: false,
       })
-      setScreenshot(canvas.toDataURL('image/png'))
+
+      // 恢复原始 padding
+      el.style.padding = origPadding
+
+      if (isMobile) {
+        // 手机端：JPEG data URL，显示预览弹窗供长按保存
+        const url = canvas.toDataURL('image/jpeg', 0.85)
+        if (screenshot) URL.revokeObjectURL(screenshot)
+        setScreenshot(url)
+      } else {
+        // 桌面端：直接下载，不走弹窗
+        const url = canvas.toDataURL('image/jpeg', 0.92)
+        const a = document.createElement('a')
+        a.download = (curFile?.name || 'screenshot') + '.jpg'
+        a.href = url
+        a.click()
+        showToast('截图已保存', 'success')
+      }
     } catch (e) {
+      console.error('截图失败:', e)
       showToast('截图生成失败', 'error')
     }
-  }, [])
+  }, [screenshot, curFile])
 
   // 保存截图
   const saveScreenshot = useCallback(() => {
@@ -593,9 +617,16 @@ const MarkdownReader: React.FC = () => {
     a.download = (curFile?.name || 'screenshot') + '.png'
     a.href = screenshot
     a.click()
+    URL.revokeObjectURL(screenshot)
     setScreenshot(null)
     showToast('截图已保存', 'success')
   }, [screenshot, curFile])
+
+  // 关闭截图弹窗并释放 Blob URL
+  const closeScreenshot = useCallback(() => {
+    if (screenshot) URL.revokeObjectURL(screenshot)
+    setScreenshot(null)
+  }, [screenshot])
 
   if (!curFile) {
     return (
@@ -729,20 +760,26 @@ const MarkdownReader: React.FC = () => {
 
       {/* 截图预览弹窗 */}
       {screenshot && (
-        <div className="screenshot-overlay" onClick={() => setScreenshot(null)}>
-          <div className="screenshot-modal" onClick={(e) => e.stopPropagation()}>
-            <img src={screenshot} alt="screenshot" />
-            {isMobile ? (
-              <div className="screenshot-wechat-tip">
+        <div className="screenshot-overlay" onClick={closeScreenshot}>
+          {isMobile ? (
+            <>
+              <div className="screenshot-fullscroll" onClick={(e) => e.stopPropagation()}>
+                <img src={screenshot} alt="screenshot" />
+              </div>
+              <button className="screenshot-close-btn" onClick={closeScreenshot}>×</button>
+              <div className="screenshot-bottom-tip" onClick={closeScreenshot}>
                 <p>长按图片保存到相册</p>
               </div>
-            ) : (
+            </>
+          ) : (
+            <div className="screenshot-modal" onClick={(e) => e.stopPropagation()}>
+              <img src={screenshot} alt="screenshot" />
               <div className="screenshot-actions">
-                <button className="btn-cancel" onClick={() => setScreenshot(null)}>关闭</button>
+                <button className="btn-cancel" onClick={closeScreenshot}>关闭</button>
                 <button className="btn-save" onClick={saveScreenshot}>保存图片</button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>
