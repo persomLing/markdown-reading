@@ -5,8 +5,8 @@ import html2canvas from 'html2canvas'
 import { useAppStore } from '../store'
 import { showToast } from './Toast'
 
-// 检测微信内置浏览器
-const isWeChat = /MicroMessenger/i.test(navigator.userAgent)
+// 检测移动端浏览器（手机浏览器普遍不支持 a.download，需长按保存）
+const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
 
 // 配置 marked
 const renderer = new marked.Renderer()
@@ -732,7 +732,7 @@ const MarkdownReader: React.FC = () => {
         <div className="screenshot-overlay" onClick={() => setScreenshot(null)}>
           <div className="screenshot-modal" onClick={(e) => e.stopPropagation()}>
             <img src={screenshot} alt="screenshot" />
-            {isWeChat ? (
+            {isMobile ? (
               <div className="screenshot-wechat-tip">
                 <p>长按图片保存到相册</p>
               </div>
