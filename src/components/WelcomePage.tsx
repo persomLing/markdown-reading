@@ -4,7 +4,7 @@ import { showToast } from './Toast'
 
 const WelcomePage: React.FC = () => {
   const [showPwd, setShowPwd] = useState(false)
-  const [pwd, setPwd] = useState('')
+  const [pwd, setPwd] = useState('sy225')
   const [pwdError, setPwdError] = useState(false)
   const [showGithub, setShowGithub] = useState(false)
   const [githubUrl, setGithubUrl] = useState('')
@@ -77,7 +77,7 @@ const WelcomePage: React.FC = () => {
       })
       return
     }
-    setPwd('')
+    setPwd('sy225')
     setPwdError(false)
     setShowPwd(true)
   }
