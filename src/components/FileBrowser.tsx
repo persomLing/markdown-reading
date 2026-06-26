@@ -12,6 +12,11 @@ const FileBrowser: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false)
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [pendingRetry, setPendingRetry] = useState<'native' | 'input' | null>(null)
+  const [invalidModal, setInvalidModal] = useState<{
+    title: string
+    message: string
+    onConfirm: () => void
+  } | null>(null)
 
   useEffect(() => {
     const el = fileInputRef.current
@@ -49,7 +54,7 @@ const FileBrowser: React.FC = () => {
     const checkSources = async () => {
       const store = useAppStore.getState()
       const localSources = store.sources.filter(s => s.type === 'local')
-      const invalidSources: string[] = []
+      const invalidSources: { id: string; name: string }[] = []
       const permissionFailedSources: string[] = []
       
       // 检查所有本地文件源
@@ -62,9 +67,8 @@ const FileBrowser: React.FC = () => {
         // 再检查 IndexedDB（原生API添加的源）
         const handle = await getHandle(source.id)
         if (!handle) {
-          // 内存和 IndexedDB 都没有，标记为失效
-          invalidSources.push(source.name)
-          await store.removeSource(source.id)
+          // 内存和 IndexedDB 都没有，收集待删除
+          invalidSources.push({ id: source.id, name: source.name })
         } else {
           const ok = await ensurePermission(handle, true)
           if (!ok) {
@@ -74,9 +78,23 @@ const FileBrowser: React.FC = () => {
         }
       }
       
-      // 提示已失效的源
+      // 弹窗提示失效源，确认后自动删除
       if (invalidSources.length > 0) {
-        showToast(`以下文件源已失效并已移除：${invalidSources.join('、')}`, 'info')
+        const names = invalidSources.map(s => s.name).join('、')
+        setInvalidModal({
+          title: '文件源已失效',
+          message: `以下文件源因数据丢失已失效，将被自动移除：
+${names}
+
+请重新选择文件夹以继续使用。`,
+          onConfirm: async () => {
+            for (const s of invalidSources) {
+              await useAppStore.getState().removeSource(s.id)
+            }
+            setInvalidModal(null)
+            showToast(`已自动移除 ${invalidSources.length} 个失效文件源`, 'info')
+          },
+        })
       }
       
       // 提示权限失败的源
@@ -153,9 +171,18 @@ const FileBrowser: React.FC = () => {
         // 权限被拒绝：不自动删除，提示用户重新授权
         showToast(`文件源「${source.name}」权限已过期，请点击重新选择文件夹`, 'info')
       } else {
-        // 源找不到：标记失效并移除
-        showToast(`文件源「${source.name}」已失效，将自动移除`, 'info')
-        await removeSource(id)
+        // 源找不到：弹窗提示后自动删除
+        setInvalidModal({
+          title: '文件源已失效',
+          message: `文件源「${source.name}」因数据丢失已失效，将被自动移除。
+
+请重新选择文件夹以继续使用。`,
+          onConfirm: async () => {
+            await removeSource(id)
+            setInvalidModal(null)
+            showToast(`已移除失效文件源「${source.name}」`, 'info')
+          },
+        })
       }
     } catch (e) {
       console.error('切换来源失败:', e)
@@ -386,6 +413,30 @@ const FileBrowser: React.FC = () => {
         onChange={handleInputChange}
         accept=".md,.markdown,.txt,text/markdown,text/plain"
       />
+
+      {/* 失效文件源弹窗 */}
+      {invalidModal && (
+        <div className="pwd-overlay" onClick={() => setInvalidModal(null)}>
+          <div className="pwd-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="pwd-head">
+              <div className="pwd-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              </div>
+              <h3>{invalidModal.title}</h3>
+            </div>
+            <p className="pwd-desc" style={{ whiteSpace: 'pre-line' }}>{invalidModal.message}</p>
+            <div className="pwd-actions">
+              <button className="pwd-confirm" onClick={invalidModal.onConfirm}>
+                我知道了
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 源数量上限弹窗 */}
       {showLimitModal && (
