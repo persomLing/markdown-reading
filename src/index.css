@@ -1627,16 +1627,12 @@ input {
 
 /* ====================== Wrapped Table (self-scroll) ====================== */
 .markdown-body .md-table {
-  position: relative;
-  margin: 0 0 1.2em;
-  border: 1px solid var(--border2);
-  border-radius: 12px;
-  overflow: hidden;
   max-width: 100%;
 }
 
 .markdown-body .md-table-scroll {
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar) transparent;
@@ -1656,11 +1652,12 @@ input {
 }
 
 .markdown-body .md-table table {
-  width: 100%;
-  min-width: 600px; /* 表格最小宽度，确保内容不被压缩 */
+  width: fit-content;
+  min-width: 600px;
   margin: 0;
   border: none;
   border-collapse: collapse;
+  table-layout: auto;
 }
 
 .markdown-body .md-table th,
@@ -1712,18 +1709,15 @@ input {
 /* 移动端表格优化 */
 @media (max-width: 768px) {
   .markdown-body .md-table {
-    margin: 0 -20px 1.2em; /* 负边距让表格占满整个宽度 */
     border-radius: 0;
-    border-left: none;
-    border-right: none;
   }
 
   .markdown-body .md-table-scroll {
-    padding: 0 20px; /* 恢复内边距 */
+    border-radius: 0;
   }
 
   .markdown-body .md-table table {
-    min-width: 500px; /* 移动端表格最小宽度 */
+    min-width: 500px;
   }
 }
 
@@ -2788,7 +2782,7 @@ input {
   height: 36px;
   border-radius: 50%;
   border: none;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.5);
   color: #fff;
   font-size: 1.6rem;
   line-height: 1;
@@ -2803,8 +2797,8 @@ input {
   display: block;
   margin: 0 auto;
   border-radius: 8px;
-  border: 2px solid rgba(255,255,255,0.25);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
 /* 底部固定提示 */
@@ -2815,7 +2809,7 @@ input {
   right: 0;
   padding: 14px 0;
   text-align: center;
-  background: linear-gradient(transparent, rgba(0,0,0,0.6));
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
   pointer-events: auto;
   z-index: 1;
 }
@@ -2826,7 +2820,7 @@ input {
   font-weight: 500;
   color: #fff;
   letter-spacing: 0.15em;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
 .screenshot-actions {
