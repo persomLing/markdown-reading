@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react'
 import { useAppStore, MAX_SOURCES } from '../store'
 import { showToast } from './Toast'
-import { getHandle, ensurePermission } from '../lib/idb'
+import { getHandle, ensurePermission, restoreVirtualFS } from '../lib/idb'
 
 const FileBrowser: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -67,10 +67,14 @@ const FileBrowser: React.FC = () => {
         // 再检查 IndexedDB（原生API添加的源）
         const handle = await getHandle(source.id)
         if (!handle) {
+          const vfsData = await restoreVirtualFS(source.id)
+          if (vfsData) {
+            continue
+          }
           // 内存和 IndexedDB 都没有，收集待删除
           invalidSources.push({ id: source.id, name: source.name })
         } else {
-          const ok = await ensurePermission(handle, true)
+          const ok = await ensurePermission(handle)
           if (!ok) {
             // 权限失败不自动删除，提示用户手动处理
             permissionFailedSources.push(source.name)
@@ -294,7 +298,7 @@ ${names}
                   </svg>
                 )}
                 <span className="st-name">{s.name}</span>
-                {activeSourceId === s.id && (s.type === 'local' || s.type === 'github') && (
+                {(s.type === 'local' || s.type === 'github') && (
                   <span
                     className="st-close"
                     onClick={(e) => {

@@ -526,7 +526,7 @@ export const useAppStore = create<AppStore>()(
 
       selectLocalFolder: async () => {
         if (!supportsNativeFS()) return false
-        const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' })
+        const handle = await (window as any).showDirectoryPicker({ mode: 'read' })
         if (!handle) return false
 
         const existingSource = get().sources.find((s) => s.type === 'local' && s.name === handle.name)
@@ -741,7 +741,7 @@ export const useAppStore = create<AppStore>()(
 
           const handle = await getHandle(id)
           if (handle) {
-            const ok = await ensurePermission(handle, true)
+            const ok = await ensurePermission(handle)
             if (!ok) {
               return 'permission_denied'
             }
