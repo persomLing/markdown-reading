@@ -578,6 +578,7 @@ export const useAppStore = create<AppStore>()(
         const existingSource = get().sources.find((s) => s.type === 'local' && s.name === folderName)
         if (existingSource) {
           virtualHandles.set(existingSource.id, vRoot)
+          await deleteHandle(existingSource.id)
           await saveVirtualFS(existingSource.id, vRoot)
           set({
             activeSourceId: existingSource.id,
@@ -595,6 +596,7 @@ export const useAppStore = create<AppStore>()(
 
         const id = 'local-' + Date.now()
         virtualHandles.set(id, vRoot)
+        await deleteHandle(id)
         // 持久化虚拟文件系统到 IndexedDB，刷新后可恢复
         await saveVirtualFS(id, vRoot)
         const newSource: FileSource = { id, type: 'local', name: folderName }
@@ -739,23 +741,6 @@ export const useAppStore = create<AppStore>()(
             return 'success'
           }
 
-          const handle = await getHandle(id)
-          if (handle) {
-            const ok = await ensurePermission(handle)
-            if (!ok) {
-              return 'permission_denied'
-            }
-            set({
-              activeSourceId: id,
-              root: handle,
-              dir: handle,
-              path: [],
-              rootName: source.name,
-            })
-            await get().loadDir()
-            return 'success'
-          }
-
           // 尝试从 VFS IndexedDB 恢复（降级方案添加的源）
           try {
             const vfsData = await restoreVirtualFS(id)
@@ -777,6 +762,23 @@ export const useAppStore = create<AppStore>()(
           }
 
           // 三种方式都找不到
+          const handle = await getHandle(id)
+          if (handle) {
+            const ok = await ensurePermission(handle)
+            if (!ok) {
+              return 'permission_denied'
+            }
+            set({
+              activeSourceId: id,
+              root: handle,
+              dir: handle,
+              path: [],
+              rootName: source.name,
+            })
+            await get().loadDir()
+            return 'success'
+          }
+
           return 'not_found'
         } finally {
           setLoading(false)
@@ -867,29 +869,26 @@ export const useAppStore = create<AppStore>()(
                   store.loadDir()
                   return
                 }
-                // 2. 尝试从原生 IndexedDB 恢复（桌面 Chrome 通过 showDirectoryPicker 添加的源）
-                getHandle(state.activeSourceId).then(async (handle) => {
+                restoreVirtualFS(state.activeSourceId!).then(async (vfsData) => {
+                  if (vfsData) {
+                    const vRoot = rebuildVirtualFS(vfsData)
+                    virtualHandles.set(state.activeSourceId!, vRoot)
+                    store.setRoot(vRoot)
+                    store.setDir(vRoot)
+                    store.loadDir()
+                    return
+                  }
+
+                  const handle = await getHandle(state.activeSourceId!)
                   if (handle) {
                     store.setRoot(handle)
                     store.setDir(handle)
                     store.loadDir()
-                    return
                   }
-                  // 3. 尝试从 VFS IndexedDB 恢复（手机/降级方案添加的源）
-                  try {
-                    const vfsData = await restoreVirtualFS(state.activeSourceId!)
-                    if (vfsData) {
-                      const vRoot = rebuildVirtualFS(vfsData)
-                      virtualHandles.set(state.activeSourceId!, vRoot)
-                      store.setRoot(vRoot)
-                      store.setDir(vRoot)
-                      store.loadDir()
-                    }
-                    // 都找不到时不阻塞，checkSources 会处理并提示用户
-                  } catch (e) {
-                    console.warn('VFS 恢复失败:', e)
-                  }
+                }).catch((e) => {
+                  console.warn('VFS 鎭㈠澶辫触:', e)
                 })
+                return
               } else {
                 // 内置/GitHub 源：直接加载
                 store.loadDir()

@@ -65,12 +65,13 @@ const FileBrowser: React.FC = () => {
         }
         
         // 再检查 IndexedDB（原生API添加的源）
+        const vfsData = await restoreVirtualFS(source.id)
+        if (vfsData) {
+          continue
+        }
+
         const handle = await getHandle(source.id)
         if (!handle) {
-          const vfsData = await restoreVirtualFS(source.id)
-          if (vfsData) {
-            continue
-          }
           // 内存和 IndexedDB 都没有，收集待删除
           invalidSources.push({ id: source.id, name: source.name })
         } else {
