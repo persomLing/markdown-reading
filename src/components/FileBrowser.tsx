@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react'
 import { useAppStore, MAX_SOURCES } from '../store'
 import { showToast } from './Toast'
-import { getHandle, ensurePermission, restoreVirtualFS } from '../lib/idb'
+import { getHandle, restoreVirtualFS } from '../lib/idb'
 
 const FileBrowser: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -53,7 +53,14 @@ const FileBrowser: React.FC = () => {
     
     const checkSources = async () => {
       const store = useAppStore.getState()
-      const localSources = store.sources.filter(s => s.type === 'local')
+      if (!store.activeSourceId && store.sources.length > 0) {
+        const nextSource = store.sources.find(s => s.type !== 'builtin') || store.sources[0]
+        await store.switchSource(nextSource.id)
+        return
+      }
+
+      const activeSource = store.sources.find(s => s.id === store.activeSourceId)
+      const localSources = activeSource?.type === 'local' ? [activeSource] : []
       const invalidSources: { id: string; name: string }[] = []
       const permissionFailedSources: string[] = []
       
@@ -74,12 +81,6 @@ const FileBrowser: React.FC = () => {
         if (!handle) {
           // 内存和 IndexedDB 都没有，收集待删除
           invalidSources.push({ id: source.id, name: source.name })
-        } else {
-          const ok = await ensurePermission(handle)
-          if (!ok) {
-            // 权限失败不自动删除，提示用户手动处理
-            permissionFailedSources.push(source.name)
-          }
         }
       }
       
@@ -93,11 +94,8 @@ ${names}
 
 请重新选择文件夹以继续使用。`,
           onConfirm: async () => {
-            for (const s of invalidSources) {
-              await useAppStore.getState().removeSource(s.id)
-            }
             setInvalidModal(null)
-            showToast(`已自动移除 ${invalidSources.length} 个失效文件源`, 'info')
+            showToast('请重新选择文件夹', 'info')
           },
         })
       }
@@ -109,7 +107,11 @@ ${names}
       
       // 加载目录
       if (store.activeSourceId && store.entries.length === 0) {
-        await store.loadDir()
+        if (activeSource?.type === 'local') {
+          await store.switchSource(store.activeSourceId)
+        } else {
+          await store.loadDir()
+        }
       }
     }
     

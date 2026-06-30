@@ -533,6 +533,7 @@ export const useAppStore = create<AppStore>()(
         if (existingSource) {
           virtualHandles.set(existingSource.id, handle as FileSystemDirectoryHandle)
           await saveHandle(existingSource.id, handle as FileSystemDirectoryHandle)
+          await saveVirtualFS(existingSource.id, handle as FileSystemDirectoryHandle)
           set({
             activeSourceId: existingSource.id,
             root: handle as FileSystemDirectoryHandle,
@@ -549,7 +550,9 @@ export const useAppStore = create<AppStore>()(
         if (nonBuiltinCount >= MAX_SOURCES) return 'limit_reached'
 
         const id = 'local-' + Date.now()
+        virtualHandles.set(id, handle as FileSystemDirectoryHandle)
         await saveHandle(id, handle as FileSystemDirectoryHandle)
+        await saveVirtualFS(id, handle as FileSystemDirectoryHandle)
         const newSource: FileSource = { id, type: 'local', name: handle.name }
 
         set((state) => {

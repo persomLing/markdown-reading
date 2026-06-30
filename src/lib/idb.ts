@@ -98,6 +98,7 @@ async function serializeVFS(handle: any): Promise<SerializedDir> {
       if (entry.kind === 'directory') {
         dir.children.push(await serializeVFS(entry))
       } else if (entry.kind === 'file') {
+        if (!/\.(md|markdown|txt)$/i.test(name)) continue
         try {
           const file = await entry.getFile()
           const content = await file.text()
