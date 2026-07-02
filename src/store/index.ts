@@ -496,7 +496,7 @@ export const useAppStore = create<AppStore>()(
           const { setDir, setPath, loadDir } = get()
           const localSourceId = sourceId || activeSourceId || undefined
           if (localSourceId) {
-            const vfsData = await restoreVirtualFS(localSourceId)
+            const vfsData = await withTimeout(restoreVirtualFS(localSourceId))
             if (vfsData) {
               const vRoot = rebuildVirtualFS(vfsData)
               virtualHandles.set(localSourceId, vRoot)
@@ -779,7 +779,7 @@ export const useAppStore = create<AppStore>()(
 
           // 尝试从 VFS IndexedDB 恢复（降级方案添加的源）
           try {
-            const vfsData = await restoreVirtualFS(id)
+            const vfsData = await withTimeout(restoreVirtualFS(id))
             if (vfsData) {
               const vRoot = rebuildVirtualFS(vfsData)
               virtualHandles.set(id, vRoot)
@@ -798,7 +798,7 @@ export const useAppStore = create<AppStore>()(
           }
 
           // 三种方式都找不到
-          const handle = await getHandle(id)
+          const handle = await withTimeout(getHandle(id))
           if (handle) {
             const ok = await withTimeout(ensurePermission(handle))
             if (!ok) {
@@ -905,7 +905,7 @@ export const useAppStore = create<AppStore>()(
                   store.loadDir()
                   return
                 }
-                restoreVirtualFS(state.activeSourceId!).then(async (vfsData) => {
+                withTimeout(restoreVirtualFS(state.activeSourceId!)).then(async (vfsData) => {
                   if (vfsData) {
                     const vRoot = rebuildVirtualFS(vfsData)
                     virtualHandles.set(state.activeSourceId!, vRoot)
@@ -915,7 +915,7 @@ export const useAppStore = create<AppStore>()(
                     return
                   }
 
-                  const handle = await getHandle(state.activeSourceId!)
+                  const handle = await withTimeout(getHandle(state.activeSourceId!))
                   if (handle) {
                     store.setRoot(handle)
                     store.setDir(handle)
