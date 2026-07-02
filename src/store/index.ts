@@ -826,12 +826,17 @@ export const useAppStore = create<AppStore>()(
         if (!source) return
         // 禁止删除内置每日精读
         if (source.type === 'builtin') return
+        const wasActive = get().activeSourceId === id
+        const nextSource = get().sources.find((s) => s.id !== id && s.type === 'builtin')
+          || get().sources.find((s) => s.id !== id)
 
         // 本地源清理 handle 缓存和 VFS 数据
         if (source.type === 'local') {
           virtualHandles.delete(id)
-          await deleteHandle(id)
-          await deleteVirtualFS(id)
+          void Promise.allSettled([
+            withTimeout(deleteHandle(id)),
+            withTimeout(deleteVirtualFS(id)),
+          ]).catch((e) => console.warn('Failed to clean local source cache:', e))
         }
 
         set((state) => {
@@ -855,6 +860,9 @@ export const useAppStore = create<AppStore>()(
           }
           return patch as any
         })
+        if (wasActive && nextSource) {
+          await get().switchSource(nextSource.id)
+        }
       },
 
       hasNativeFS: () => supportsNativeFS(),

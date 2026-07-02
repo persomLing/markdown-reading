@@ -204,6 +204,13 @@ ${names}
   }
 
   // GitHub 仓库提交
+  const handleRemoveSource = async (e: React.MouseEvent, id: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setInvalidModal(null)
+    await removeSource(id)
+  }
+
   const handleGithubSubmit = async () => {
     const url = githubUrl.trim()
     if (!url) {
@@ -310,10 +317,10 @@ ${names}
                 {(s.type === 'local' || s.type === 'github') && (
                   <span
                     className="st-close"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      removeSource(s.id)
-                    }}
+                    role="button"
+                    tabIndex={0}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => handleRemoveSource(e, s.id)}
                   >
                     ×
                   </span>
