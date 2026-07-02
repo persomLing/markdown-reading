@@ -8,6 +8,7 @@ import { parseGitHubUrl, fetchDefaultBranch, fetchRepoContents, fetchFileContent
 
 const OWNER_PASSWORD = 'sy225'
 export const MAX_SOURCES = 5
+const LOCAL_IO_TIMEOUT_MS = 3000
 
 // 内存缓存虚拟 handle（不能进 localStorage，页面刷新后丢失）
 const virtualHandles = new Map<string, FileSystemDirectoryHandle>()
@@ -18,6 +19,22 @@ function getGitHubInfo(source: FileSource): { owner: string; repo: string; branc
   const parsed = parseGitHubUrl(source.repoUrl)
   if (!parsed || !parsed.branch) return null
   return { owner: parsed.owner, repo: parsed.repo, branch: parsed.branch, subdir: parsed.subdir }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms = LOCAL_IO_TIMEOUT_MS): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error('Local file operation timed out')), ms)
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        window.clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
 }
 
 interface AppStore extends AppState {
@@ -476,23 +493,39 @@ export const useAppStore = create<AppStore>()(
           }
 
           // 本地源
-          const { root, setDir, setPath, loadDir } = get()
-          if (!root) return false
+          const { setDir, setPath, loadDir } = get()
+          const localSourceId = sourceId || activeSourceId || undefined
+          if (localSourceId) {
+            const vfsData = await restoreVirtualFS(localSourceId)
+            if (vfsData) {
+              const vRoot = rebuildVirtualFS(vfsData)
+              virtualHandles.set(localSourceId, vRoot)
+              set({
+                activeSourceId: localSourceId,
+                root: vRoot,
+                dir: vRoot,
+                rootName: source?.name || get().rootName,
+              })
+            }
+          }
+
+          const restoredRoot = get().root
+          if (!restoredRoot) return false
 
           const parts = relPath.split('/')
-          let dir = root
+          let dir = restoredRoot
 
           for (let i = 0; i < parts.length - 1; i++) {
             try {
-              dir = await dir.getDirectoryHandle(parts[i])
+              dir = await withTimeout(dir.getDirectoryHandle(parts[i]))
             } catch {
               console.error('文件夹不存在')
               return false
             }
           }
 
-          const fh = await dir.getFileHandle(parts[parts.length - 1])
-          const file = await fh.getFile()
+          const fh = await withTimeout(dir.getFileHandle(parts[parts.length - 1]))
+          const file = await withTimeout(fh.getFile())
           const content = await file.text()
           const name = parts[parts.length - 1]
 
@@ -767,7 +800,7 @@ export const useAppStore = create<AppStore>()(
           // 三种方式都找不到
           const handle = await getHandle(id)
           if (handle) {
-            const ok = await ensurePermission(handle)
+            const ok = await withTimeout(ensurePermission(handle))
             if (!ok) {
               return 'permission_denied'
             }
