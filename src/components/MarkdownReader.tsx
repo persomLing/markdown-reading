@@ -1,12 +1,138 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { marked } from 'marked'
-import hljs from 'highlight.js'
-import html2canvas from 'html2canvas'
+import DOMPurify from 'dompurify'
+import hljs from 'highlight.js/lib/core'
+import bash from 'highlight.js/lib/languages/bash'
+import cpp from 'highlight.js/lib/languages/cpp'
+import css from 'highlight.js/lib/languages/css'
+import java from 'highlight.js/lib/languages/java'
+import javascript from 'highlight.js/lib/languages/javascript'
+import json from 'highlight.js/lib/languages/json'
+import markdown from 'highlight.js/lib/languages/markdown'
+import python from 'highlight.js/lib/languages/python'
+import sql from 'highlight.js/lib/languages/sql'
+import typescript from 'highlight.js/lib/languages/typescript'
+import xml from 'highlight.js/lib/languages/xml'
 import { useAppStore } from '../store'
 import { showToast } from './Toast'
 
 // 检测移动端浏览器（手机浏览器普遍不支持 a.download，需长按保存）
 const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('cpp', cpp)
+hljs.registerLanguage('css', css)
+hljs.registerLanguage('java', java)
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('json', json)
+hljs.registerLanguage('markdown', markdown)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('sql', sql)
+hljs.registerLanguage('typescript', typescript)
+hljs.registerLanguage('xml', xml)
+hljs.registerAliases(['c', 'h', 'cc'], { languageName: 'cpp' })
+hljs.registerAliases(['html', 'svg'], { languageName: 'xml' })
+hljs.registerAliases(['js', 'jsx'], { languageName: 'javascript' })
+hljs.registerAliases(['md'], { languageName: 'markdown' })
+hljs.registerAliases(['py'], { languageName: 'python' })
+hljs.registerAliases(['sh', 'shell'], { languageName: 'bash' })
+hljs.registerAliases(['ts', 'tsx'], { languageName: 'typescript' })
+
+const getScrollKey = (sourceId: string | null, path: string) =>
+  `scroll-${sourceId || 'unknown'}-${path}`
+
+const getReadingProgress = (element: HTMLElement) => {
+  const maxScroll = element.scrollHeight - element.clientHeight
+  if (maxScroll <= 0) return 100
+  return Math.min(100, Math.max(0, Math.round((element.scrollTop / maxScroll) * 100)))
+}
+
+const copyText = async (button: HTMLButtonElement, text: string) => {
+  const label = button.querySelector('span')
+  button.classList.add('copied')
+  if (label) label.textContent = '已复制'
+
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    textarea.remove()
+  }
+
+  window.setTimeout(() => {
+    button.classList.remove('copied')
+    if (label) label.textContent = '复制'
+  }, 2000)
+}
+
+const copyCode = (button: HTMLButtonElement) => {
+  const code = button.closest('.code-block')?.querySelector('pre code')?.textContent || ''
+  return copyText(button, code)
+}
+
+const openFullscreenCode = (button: HTMLButtonElement) => {
+  const codeBlock = button.closest('.code-block')
+  const sourcePre = codeBlock?.querySelector('pre')
+  if (!codeBlock || !sourcePre) return
+
+  const wrapper = document.createElement('div')
+  wrapper.className = 'code-fullscreen-wrapper'
+  const header = document.createElement('div')
+  header.className = 'code-fullscreen-header'
+  header.innerHTML = `
+    <span class="code-fullscreen-lang"></span>
+    <div class="code-fullscreen-actions">
+      <button class="code-fullscreen-copy">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+        <span>复制</span>
+      </button>
+      <button class="code-fullscreen-close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+        </svg>
+        <span>退出全屏</span>
+      </button>
+    </div>`
+  const lang = header.querySelector<HTMLElement>('.code-fullscreen-lang')
+  if (lang) lang.textContent = codeBlock.querySelector('.code-lang')?.textContent || 'text'
+  wrapper.append(header, sourcePre.cloneNode(true))
+  document.body.appendChild(wrapper)
+
+  const cleanup = () => {
+    wrapper.remove()
+    document.removeEventListener('fullscreenchange', handleFullscreenChange)
+    document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
+  }
+  const handleFullscreenChange = () => {
+    if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) cleanup()
+  }
+  const close = async () => {
+    if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen()
+    else if ((document as any).webkitFullscreenElement && (document as any).webkitExitFullscreen) {
+      await (document as any).webkitExitFullscreen()
+    } else cleanup()
+  }
+
+  header.querySelector<HTMLButtonElement>('.code-fullscreen-copy')?.addEventListener('click', (event) => {
+    const copyButton = event.currentTarget as HTMLButtonElement
+    void copyText(copyButton, sourcePre.textContent || '')
+  })
+  header.querySelector<HTMLButtonElement>('.code-fullscreen-close')?.addEventListener('click', () => void close())
+  document.addEventListener('fullscreenchange', handleFullscreenChange)
+  document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
+
+  const request = wrapper.requestFullscreen?.() || (wrapper as any).webkitRequestFullscreen?.()
+  if (request?.catch) request.catch(() => undefined)
+}
 
 // 配置 marked
 const renderer = new marked.Renderer()
@@ -22,12 +148,12 @@ renderer.code = function(code: string, language: string | undefined) {
     <div class="code-header">
       <span class="code-lang">${language || 'text'}</span>
       <div class="code-actions">
-        <button class="fullscreen-btn" onclick="window.fullscreenCode(this)" title="全屏">
+        <button class="fullscreen-btn" data-code-action="fullscreen" title="全屏">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
           </svg>
         </button>
-        <button class="copy-btn" onclick="window.copyCode(this)">
+        <button class="copy-btn" data-code-action="copy">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -77,40 +203,10 @@ const MarkdownReader: React.FC = () => {
 
   // 复制代码功能
   useEffect(() => {
-    (window as any).copyCode = (btn: HTMLButtonElement) => {
-      const code = btn.closest('.code-block')?.querySelector('pre code')?.textContent || ''
-      navigator.clipboard.writeText(code).then(() => {
-        const span = btn.querySelector('span')
-        if (span) {
-          btn.classList.add('copied')
-          span.textContent = '已复制'
-          setTimeout(() => {
-            btn.classList.remove('copied')
-            span.textContent = '复制'
-          }, 2000)
-        }
-      }).catch(() => {
-        // 降级方案
-        const textarea = document.createElement('textarea')
-        textarea.value = code
-        document.body.appendChild(textarea)
-        textarea.select()
-        document.execCommand('copy')
-        document.body.removeChild(textarea)
-        const span = btn.querySelector('span')
-        if (span) {
-          btn.classList.add('copied')
-          span.textContent = '已复制'
-          setTimeout(() => {
-            btn.classList.remove('copied')
-            span.textContent = '复制'
-          }, 2000)
-        }
-      })
-    }
+    ;(window as any).copyCode = copyCode;
 
     // 全屏代码功能 - 使用浏览器原生全屏API
-    (window as any).fullscreenCode = (btn: HTMLButtonElement) => {
+    ;(window as any).fullscreenCode = (btn: HTMLButtonElement) => {
       const codeBlock = btn.closest('.code-block')
       if (!codeBlock) return
       
@@ -200,7 +296,7 @@ const MarkdownReader: React.FC = () => {
     }
 
     // 关闭全屏
-    (window as any).closeFullscreenCode = () => {
+    ;(window as any).closeFullscreenCode = () => {
       if (document.exitFullscreen) {
         document.exitFullscreen()
       } else if ((document as any).webkitExitFullscreen) {
@@ -220,7 +316,7 @@ const MarkdownReader: React.FC = () => {
     }
 
     // 全屏内复制代码
-    (window as any).copyFullscreenCode = (btn: HTMLButtonElement) => {
+    ;(window as any).copyFullscreenCode = (btn: HTMLButtonElement) => {
       const code = btn.closest('.code-fullscreen-wrapper')?.querySelector('pre code')?.textContent || ''
       navigator.clipboard.writeText(code).then(() => {
         const span = btn.querySelector('span')
@@ -235,6 +331,7 @@ const MarkdownReader: React.FC = () => {
       })
     }
 
+    // 组件事件通过 ref 调用，避免开发态生命周期清理造成全局函数暂时缺失
     return () => {
       delete (window as any).copyCode
       delete (window as any).fullscreenCode
@@ -298,7 +395,9 @@ const MarkdownReader: React.FC = () => {
         html = await marked(curFile.content)
       }
       if (contentRef.current) {
-        contentRef.current.innerHTML = html
+        contentRef.current.innerHTML = DOMPurify.sanitize(html, {
+          USE_PROFILES: { html: true, svg: true, svgFilters: true },
+        })
 
         // 给表格包一层滚动容器，防止宽表格撑破页面
         wrapTables()
@@ -308,17 +407,21 @@ const MarkdownReader: React.FC = () => {
         
         // 为内部锚点链接添加点击事件
         setupAnchorLinks()
+        setupCodeActions()
         
         // 恢复滚动位置
-        const savedScroll = localStorage.getItem(`scroll-${curFile.path}`)
+        const savedScroll = localStorage.getItem(getScrollKey(activeSourceId, curFile.path))
         if (savedScroll && scrollRef.current) {
           scrollRef.current.scrollTop = parseInt(savedScroll)
+        }
+        if (scrollRef.current) {
+          setProgress(getReadingProgress(scrollRef.current))
         }
       }
     }
 
     renderMarkdown()
-  }, [curFile])
+  }, [curFile, sources, activeSourceId])
 
   // 为每个表格包裹滚动容器
   const wrapTables = () => {
@@ -367,21 +470,30 @@ const MarkdownReader: React.FC = () => {
   useEffect(() => {
     const scrollElement = scrollRef.current
     if (!scrollElement) return
+    let frameId: number | null = null
 
     const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = scrollElement
-      const newProgress = Math.round((scrollTop / (scrollHeight - clientHeight)) * 100)
-      setProgress(newProgress)
-      
-      // 保存滚动位置
-      if (curFile) {
-        localStorage.setItem(`scroll-${curFile.path}`, scrollTop.toString())
-      }
+      if (frameId !== null) return
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null
+        setProgress(getReadingProgress(scrollElement))
+
+        // 每帧最多写入一次，避免滚动时频繁同步操作 localStorage
+        if (curFile) {
+          localStorage.setItem(
+            getScrollKey(activeSourceId, curFile.path),
+            scrollElement.scrollTop.toString()
+          )
+        }
+      })
     }
 
     scrollElement.addEventListener('scroll', handleScroll)
-    return () => scrollElement.removeEventListener('scroll', handleScroll)
-  }, [curFile])
+    return () => {
+      scrollElement.removeEventListener('scroll', handleScroll)
+      if (frameId !== null) window.cancelAnimationFrame(frameId)
+    }
+  }, [curFile, activeSourceId])
 
   // 搜索功能 - 高亮显示
   const highlightSearch = useCallback(() => {
@@ -569,13 +681,27 @@ const MarkdownReader: React.FC = () => {
     })
   }
 
+  const setupCodeActions = () => {
+    if (!contentRef.current || contentRef.current.dataset.codeListener) return
+    contentRef.current.dataset.codeListener = 'true'
+    contentRef.current.addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-code-action]')
+      if (!button) return
+
+      const action = button.dataset.codeAction
+      if (action === 'copy') void copyCode(button)
+      if (action === 'fullscreen') openFullscreenCode(button)
+    })
+  }
+
   // 截图功能
   const takeScreenshot = useCallback(async () => {
     if (!contentRef.current) return
     showToast('正在生成截图...', 'info')
+    const el = contentRef.current
+    const origPadding = el.style.padding
     try {
-      const el = contentRef.current
-      const origPadding = el.style.padding
+      const { default: html2canvas } = await import('html2canvas')
 
       // 临时加 padding，还原阅读页面边距效果
       el.style.padding = '24px 20px'
@@ -586,9 +712,6 @@ const MarkdownReader: React.FC = () => {
         useCORS: true,
         logging: false,
       })
-
-      // 恢复原始 padding
-      el.style.padding = origPadding
 
       if (isMobile) {
         // 手机端：JPEG data URL，显示预览弹窗供长按保存
@@ -607,6 +730,8 @@ const MarkdownReader: React.FC = () => {
     } catch (e) {
       console.error('截图失败:', e)
       showToast('截图生成失败', 'error')
+    } finally {
+      el.style.padding = origPadding
     }
   }, [screenshot, curFile])
 

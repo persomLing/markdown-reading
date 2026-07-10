@@ -28,6 +28,10 @@ function authHeaders(token?: string): Record<string, string> {
   return headers
 }
 
+function encodePath(path: string): string {
+  return path.split('/').filter(Boolean).map(encodeURIComponent).join('/')
+}
+
 /** 获取仓库默认分支名 */
 export async function fetchDefaultBranch(owner: string, repo: string, token?: string): Promise<string> {
   const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers: authHeaders(token) })
@@ -49,7 +53,8 @@ export async function fetchRepoContents(
   token?: string
 ): Promise<GitHubEntry[]> {
   const cleanPath = path.replace(/^\/+|\/+$/g, '')
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${cleanPath}?ref=${branch}`
+  const encodedPath = encodePath(cleanPath)
+  const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}?ref=${encodeURIComponent(branch)}`
   const res = await fetch(url, { headers: authHeaders(token) })
   if (!res.ok) {
     if (res.status === 404) throw new Error('目录不存在')
@@ -85,10 +90,16 @@ export async function fetchFileContent(
   owner: string,
   repo: string,
   path: string,
-  branch: string
+  branch: string,
+  token?: string
 ): Promise<string> {
-  const url = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`
-  const res = await fetch(url)
+  const url = token
+    ? `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodePath(path)}?ref=${encodeURIComponent(branch)}`
+    : `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}/${encodePath(path)}`
+  const headers = token
+    ? { ...authHeaders(token), Accept: 'application/vnd.github.raw+json' }
+    : undefined
+  const res = await fetch(url, { headers })
   if (!res.ok) {
     throw new Error(`文件获取失败 (${res.status})`)
   }

@@ -375,7 +375,7 @@ export const useAppStore = create<AppStore>()(
             if (!info) return
             const { path } = get()
             const fullPath = [...path, name].join('/')
-            const content = await fetchFileContent(info.owner, info.repo, fullPath, info.branch)
+            const content = await fetchFileContent(info.owner, info.repo, fullPath, info.branch, get().settings.githubToken)
             const size = new Blob([content]).size
             setCurrentFile({ name, content, path: fullPath, size })
             setCurrentPath(fullPath)
@@ -476,7 +476,7 @@ export const useAppStore = create<AppStore>()(
           if (source?.type === 'github') {
             const info = getGitHubInfo(source)
             if (!info) return false
-            const content = await fetchFileContent(info.owner, info.repo, relPath, info.branch)
+            const content = await fetchFileContent(info.owner, info.repo, relPath, info.branch, get().settings.githubToken)
             const name = relPath.split('/').pop() || relPath
             const size = new Blob([content]).size
             setCurrentFile({ name, content, path: relPath, size })
