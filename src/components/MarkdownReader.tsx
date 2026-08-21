@@ -15,6 +15,8 @@ import typescript from 'highlight.js/lib/languages/typescript'
 import xml from 'highlight.js/lib/languages/xml'
 import { useAppStore } from '../store'
 import { showToast } from './Toast'
+import TtsPlayer from './TtsPlayer'
+import { useTtsReader } from '../hooks/useTtsReader'
 
 // 检测移动端浏览器（手机浏览器普遍不支持 a.download，需长按保存）
 const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
@@ -137,16 +139,37 @@ const openFullscreenCode = (button: HTMLButtonElement) => {
 // 配置 marked
 const renderer = new marked.Renderer()
 
+// 代码块中的 ASCII/Unicode 流程图依赖字符位置，不能交给 highlightAuto
+// （未标注语言的图表很容易被误判成 CSS/JSON），也不能让 HTML 标记介入布局。
+const escapeCodeHtml = (value: string) => value
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+
+const isDiagramCode = (code: string) =>
+  /[┌┐└┘├┤┬┴┼│─═║╔╗╚╝╠╣╦╩╬]/u.test(code) ||
+  /(?:^|\n)\s*[+|].*(?:[+|]|-{3,}|={3,})\s*(?:\n|$)/u.test(code)
+
 // 自定义代码块渲染
 renderer.code = function(code: string, language: string | undefined) {
-  const validLang = language && hljs.getLanguage(language)
-  const highlighted = validLang 
-    ? hljs.highlight(code, { language }).value
-    : hljs.highlightAuto(code).value
-  
+  const normalizedLanguage = language?.trim().toLowerCase() || ''
+  const diagram = !normalizedLanguage && isDiagramCode(code)
+  const validLang = normalizedLanguage && hljs.getLanguage(normalizedLanguage)
+  // 只有用户明确指定且已注册的语言才高亮；纯文本/流程图必须原样输出。
+  const highlighted = validLang && !diagram
+    ? hljs.highlight(code, { language: normalizedLanguage }).value
+    : escapeCodeHtml(code)
+  const codeClass = [
+    'hljs',
+    normalizedLanguage ? `language-${normalizedLanguage}` : 'language-text',
+    diagram ? 'code-diagram-content' : '',
+  ].filter(Boolean).join(' ')
+
   return `<div class="code-block">
     <div class="code-header">
-      <span class="code-lang">${language || 'text'}</span>
+      <span class="code-lang">${normalizedLanguage || 'text'}</span>
       <div class="code-actions">
         <button class="fullscreen-btn" data-code-action="fullscreen" title="全屏">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -162,7 +185,7 @@ renderer.code = function(code: string, language: string | undefined) {
         </button>
       </div>
     </div>
-    <pre><code class="hljs language-${language || 'auto'}">${highlighted}</code></pre>
+    <pre class="${diagram ? 'code-diagram' : ''}"><code class="${codeClass}">${highlighted}</code></pre>
   </div>`
 }
 
@@ -187,6 +210,7 @@ const MarkdownReader: React.FC = () => {
     setCurrentPage, 
     toggleToc, 
     toggleSearch,
+    setSettings,
     sources,
     activeSourceId,
   } = useAppStore()
@@ -196,10 +220,30 @@ const MarkdownReader: React.FC = () => {
   const [searchResults, setSearchResults] = useState<Element[]>([])
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1)
   const [progress, setProgress] = useState(0)
+  const [renderRevision, setRenderRevision] = useState(0)
+  const [ttsOpen, setTtsOpen] = useState(false)
   
   const contentRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [screenshot, setScreenshot] = useState<string | null>(null)
+
+  const documentKey = `${activeSourceId || 'unknown'}::${curFile?.path || 'empty'}`
+  const tts = useTtsReader({
+    contentRef,
+    documentKey,
+    renderRevision,
+    preferredEngine: settings.ttsEngine,
+    apiKey: settings.mimoApiKey,
+    voice: settings.ttsVoice,
+    speed: settings.ttsSpeed,
+    stylePrompt: settings.ttsStyle,
+    autoScroll: settings.ttsAutoScroll,
+  })
+
+  const toggleTtsPlayer = () => {
+    if (ttsOpen) tts.stop()
+    setTtsOpen((open) => !open)
+  }
 
   // 复制代码功能
   useEffect(() => {
@@ -408,6 +452,7 @@ const MarkdownReader: React.FC = () => {
         // 为内部锚点链接添加点击事件
         setupAnchorLinks()
         setupCodeActions()
+        setRenderRevision((revision) => revision + 1)
         
         // 恢复滚动位置
         const savedScroll = localStorage.getItem(getScrollKey(activeSourceId, curFile.path))
@@ -635,7 +680,6 @@ const MarkdownReader: React.FC = () => {
     const element = document.getElementById(id)
     if (element) {
       element.scrollIntoView({ behavior: 'smooth' })
-      toggleToc()
       
       // 添加视觉反馈 - 目标标题短暂高亮
       element.style.transition = 'background-color 0.3s ease'
@@ -769,118 +813,152 @@ const MarkdownReader: React.FC = () => {
       {/* 主题阅读背景图层 */}
       <div className="reader-bg" />
 
-      {/* 头部 */}
-      <div className="reader-header">
-        <button onClick={() => setCurrentPage('files')} className="back-btn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-        <div className="reader-title">{curFile.name}</div>
-        <div className="reader-actions">
-          <button onClick={toggleToc} title="目录">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="8" y1="6" x2="21" y2="6" />
-              <line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" />
-              <line x1="3" y1="6" x2="3.01" y2="6" />
-              <line x1="3" y1="12" x2="3.01" y2="12" />
-              <line x1="3" y1="18" x2="3.01" y2="18" />
-            </svg>
-          </button>
-          <button onClick={toggleSearch} title="搜索">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-          </button>
-          <button onClick={takeScreenshot} title="截图">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-              <circle cx="12" cy="13" r="4" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      {/* 进度条 */}
-      <div className="progress-bar">
-        <div className="progress-fill" style={{ width: `${progress}%` }} />
-      </div>
-
-      {/* 搜索栏 */}
-      {searchOpen && (
-        <div className="search-bar">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') toggleSearch()
-            }}
-            placeholder="搜索内容..."
-            autoFocus
-          />
-          {searchResults.length > 0 && (
-            <div className="search-nav">
-              <span>{currentSearchIndex + 1}/{searchResults.length}</span>
-              <button onClick={() => navigateSearch('prev')}>
+      <div className="reader-shell">
+        {/* 目录侧边栏 */}
+        {tocOpen && (
+          <aside className="toc-sidebar">
+            <div className="toc-header">
+              <h3>目录</h3>
+              <button onClick={toggleToc} title="关闭目录">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="18 15 12 9 6 15" />
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
-              <button onClick={() => navigateSearch('next')}>
+            </div>
+            <div className="toc-content">
+              {toc.map((item) => (
+                <div
+                  key={item.id}
+                  className={`toc-item level-${item.level}`}
+                  onClick={() => scrollToHeading(item.id)}
+                >
+                  {item.text}
+                </div>
+              ))}
+            </div>
+          </aside>
+        )}
+
+        <div className="reader-main">
+          {/* 头部 */}
+          <div className="reader-header">
+            <button onClick={() => setCurrentPage('files')} className="back-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
+            <div className="reader-title">{curFile.name}</div>
+            <div className="reader-actions">
+              <button onClick={toggleToc} title="目录">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="6 9 12 15 18 9" />
+                  <line x1="8" y1="6" x2="21" y2="6" />
+                  <line x1="8" y1="12" x2="21" y2="12" />
+                  <line x1="8" y1="18" x2="21" y2="18" />
+                  <line x1="3" y1="6" x2="3.01" y2="6" />
+                  <line x1="3" y1="12" x2="3.01" y2="12" />
+                  <line x1="3" y1="18" x2="3.01" y2="18" />
+                </svg>
+              </button>
+              <button onClick={toggleSearch} title="搜索">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              </button>
+              <button
+                onClick={toggleTtsPlayer}
+                className={ttsOpen ? 'active' : ''}
+                title={ttsOpen ? '关闭朗读' : '语音朗读'}
+                aria-label={ttsOpen ? '关闭朗读' : '语音朗读'}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M11 5 6 9H2v6h4l5 4V5Z" />
+                  <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                  <path d="M18 6a8.5 8.5 0 0 1 0 12" />
+                </svg>
+              </button>
+              <button onClick={takeScreenshot} title="截图">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1 2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* 进度条 */}
+          <div className="progress-bar">
+            <div className="progress-fill" style={{ width: `${progress}%` }} />
+          </div>
+
+          {/* 搜索栏 */}
+          {searchOpen && (
+            <div className="search-bar">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') toggleSearch()
+                }}
+                placeholder="搜索内容..."
+                autoFocus
+              />
+              {searchResults.length > 0 && (
+                <div className="search-nav">
+                  <span>{currentSearchIndex + 1}/{searchResults.length}</span>
+                  <button onClick={() => navigateSearch('prev')}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="18 15 12 9 6 15" />
+                    </svg>
+                  </button>
+                  <button onClick={() => navigateSearch('next')}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+              <button onClick={toggleSearch} className="close-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
             </div>
           )}
-          <button onClick={toggleSearch} className="close-search">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-      )}
 
-      {/* 目录侧边栏 */}
-      {tocOpen && (
-        <div className="toc-sidebar">
-          <div className="toc-header">
-            <h3>目录</h3>
-            <button onClick={toggleToc}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
+          {/* 内容区域 */}
+          <div className="reader-content" ref={scrollRef}>
+            <div
+              className="markdown-body"
+              ref={contentRef}
+              style={{
+                fontSize: `${settings.fontSize}px`,
+                lineHeight: settings.lh,
+              }}
+            />
           </div>
-          <div className="toc-content">
-            {toc.map((item) => (
-              <div
-                key={item.id}
-                className={`toc-item level-${item.level}`}
-                onClick={() => scrollToHeading(item.id)}
-              >
-                {item.text}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* 内容区域 */}
-      <div className="reader-content" ref={scrollRef}>
-        <div 
-          className="markdown-body"
-          ref={contentRef}
-          style={{
-            fontSize: `${settings.fontSize}px`,
-            lineHeight: settings.lh,
-          }}
-        />
+          {ttsOpen && (
+            <TtsPlayer
+              status={tts.status}
+              engine={tts.engine}
+              error={tts.error}
+              fallbackReason={tts.fallbackReason}
+              currentIndex={tts.currentIndex}
+              segmentCount={tts.segmentCount}
+              settings={settings}
+              onEngineChange={(ttsEngine) => setSettings({ ttsEngine })}
+              onToggle={tts.togglePlayback}
+              onPrevious={tts.previous}
+              onNext={tts.next}
+              onVoiceChange={(ttsVoice) => setSettings({ ttsVoice })}
+              onSpeedChange={(ttsSpeed) => setSettings({ ttsSpeed })}
+            />
+          )}
+        </div>
       </div>
 
       {/* 截图预览弹窗 */}

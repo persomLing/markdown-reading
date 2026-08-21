@@ -9,6 +9,24 @@ import { parseGitHubUrl, fetchDefaultBranch, fetchRepoContents, fetchFileContent
 const OWNER_PASSWORD = 'sy225'
 export const MAX_SOURCES = 5
 const LOCAL_IO_TIMEOUT_MS = 3000
+const MIMO_SESSION_KEY = 'mimo-api-key'
+const MIMO_REMEMBERED_KEY = 'mimo-api-key-remembered'
+
+const getSessionMimoApiKey = () => {
+  try {
+    return sessionStorage.getItem(MIMO_SESSION_KEY)?.trim() || undefined
+  } catch {
+    return undefined
+  }
+}
+
+const getRememberedMimoApiKey = () => {
+  try {
+    return localStorage.getItem(MIMO_REMEMBERED_KEY)?.trim() || undefined
+  } catch {
+    return undefined
+  }
+}
 
 // 内存缓存虚拟 handle（不能进 localStorage，页面刷新后丢失）
 const virtualHandles = new Map<string, FileSystemDirectoryHandle>()
@@ -54,6 +72,7 @@ interface AppStore extends AppState {
   setFontSize: (size: number) => void
   setLineHeight: (height: number) => void
   setGithubToken: (token: string) => void
+  setMimoApiKey: (apiKey: string, remember?: boolean) => void
 
   // UI 状态操作
   setCurrentPage: (page: PageType) => void
@@ -115,6 +134,13 @@ export const useAppStore = create<AppStore>()(
         fontFamily: 'serif',
         fontSize: 16,
         lh: 1.85,
+        ttsEngine: 'browser',
+        mimoApiKey: getSessionMimoApiKey(),
+        mimoRememberApiKey: false,
+        ttsVoice: '冰糖',
+        ttsSpeed: 1,
+        ttsStyle: '温柔自然，语速适中。',
+        ttsAutoScroll: true,
       },
       tocOpen: false,
       searchOpen: false,
@@ -156,6 +182,26 @@ export const useAppStore = create<AppStore>()(
       setGithubToken: (token) => set((state) => ({
         settings: { ...state.settings, githubToken: token || undefined }
       })),
+      setMimoApiKey: (apiKey, remember = false) => {
+        const normalizedApiKey = apiKey.trim()
+        try {
+          sessionStorage.removeItem(MIMO_SESSION_KEY)
+          localStorage.removeItem(MIMO_REMEMBERED_KEY)
+          if (normalizedApiKey) {
+            if (remember) localStorage.setItem(MIMO_REMEMBERED_KEY, normalizedApiKey)
+            else sessionStorage.setItem(MIMO_SESSION_KEY, normalizedApiKey)
+          }
+        } catch {
+          // 内存状态仍可使用；某些隐私模式可能禁用浏览器存储。
+        }
+        set((state) => ({
+          settings: {
+            ...state.settings,
+            mimoApiKey: normalizedApiKey || undefined,
+            mimoRememberApiKey: Boolean(normalizedApiKey && remember),
+          }
+        }))
+      },
 
       // UI 状态操作
       setCurrentPage: (currentPage) => set({ currentPage }),
@@ -874,7 +920,16 @@ export const useAppStore = create<AppStore>()(
           try {
             const parsed = JSON.parse(saved)
             if (parsed.state) {
-              set(parsed.state)
+              const rememberedMimoApiKey = getRememberedMimoApiKey()
+              set({
+                ...parsed.state,
+                settings: {
+                  ...parsed.state.settings,
+                  mimoApiKey: getSessionMimoApiKey()
+                    || rememberedMimoApiKey,
+                  mimoRememberApiKey: Boolean(rememberedMimoApiKey),
+                },
+              })
             }
           } catch (e) {
             console.error('Failed to restore state:', e)
@@ -884,23 +939,37 @@ export const useAppStore = create<AppStore>()(
     }),
     {
       name: 'app-storage',
-      version: 5,
-      partialize: (state) => ({
-        settings: state.settings,
-        history: state.history,
-        lastFile: state.lastFile,
-        sources: state.sources,
-        activeSourceId: state.activeSourceId,
-        isOwner: state.isOwner,
-        rootName: state.rootName,
-        currentPage: state.currentPage,
-        path: state.path,
-      }),
+      version: 9,
+      partialize: (state) => {
+        const { mimoApiKey: _mimoApiKey, mimoRememberApiKey: _mimoRememberApiKey, ...persistentSettings } = state.settings
+        return {
+          settings: {
+            ...persistentSettings,
+            mimoRememberApiKey: Boolean(getRememberedMimoApiKey()),
+          },
+          history: state.history,
+          lastFile: state.lastFile,
+          sources: state.sources,
+          activeSourceId: state.activeSourceId,
+          isOwner: state.isOwner,
+          rootName: state.rootName,
+          currentPage: state.currentPage,
+          path: state.path,
+        }
+      },
       onRehydrateStorage: () => {
         return (state) => {
+          const store = useAppStore.getState()
+          const rememberedMimoApiKey = getRememberedMimoApiKey()
+          const restoredMimoApiKey = getSessionMimoApiKey()
+            || rememberedMimoApiKey
+          store.setSettings({
+            mimoApiKey: restoredMimoApiKey,
+            mimoRememberApiKey: Boolean(rememberedMimoApiKey),
+          })
+
           // 水合完成后，如果有活跃来源但没有加载目录，自动加载
           if (state && state.activeSourceId) {
-            const store = useAppStore.getState()
             if (store.entries.length === 0) {
               const source = state.sources?.find((s: FileSource) => s.id === state.activeSourceId)
               // 本地源：先从内存缓存，再从原生 IndexedDB，最后从 VFS IndexedDB 恢复
@@ -953,6 +1022,23 @@ export const useAppStore = create<AppStore>()(
         }
         // v3 -> v4: 无需特殊迁移，新增字段均为可选
         // v4 -> v5: 新增 rootName 持久化
+        if (version < 6 && persisted?.settings) {
+          if (!persisted.settings.ttsVoice) persisted.settings.ttsVoice = '冰糖'
+          if (typeof persisted.settings.ttsSpeed !== 'number') persisted.settings.ttsSpeed = 1
+          if (!persisted.settings.ttsStyle) persisted.settings.ttsStyle = '温柔自然，语速适中。'
+          if (typeof persisted.settings.ttsAutoScroll !== 'boolean') persisted.settings.ttsAutoScroll = true
+        }
+        if (version < 7 && persisted?.settings) {
+          persisted.settings.ttsEngine = 'browser'
+        }
+        if (version < 8 && persisted?.settings) {
+          delete persisted.settings.mimoApiKey
+        }
+        if (version < 9 && persisted?.settings) {
+          if (typeof persisted.settings.mimoRememberApiKey !== 'boolean') {
+            persisted.settings.mimoRememberApiKey = false
+          }
+        }
         return persisted
       },
     }

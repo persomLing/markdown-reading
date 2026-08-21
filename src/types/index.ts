@@ -43,6 +43,7 @@ export interface LastFile {
 // 设置相关类型
 export type ThemeName = 'dark' | 'bamboo' | 'paper' | 'porcelain' | 'sunlight'
 export type FontFamily = 'serif' | 'sans' | 'kai' | 'xing' | 'cute'
+export type TtsEngine = 'browser' | 'mimo'
 
 export interface Settings {
   theme: ThemeName
@@ -50,6 +51,13 @@ export interface Settings {
   fontSize: number
   lh: number
   githubToken?: string
+  ttsEngine: TtsEngine
+  mimoApiKey?: string
+  mimoRememberApiKey: boolean
+  ttsVoice: string
+  ttsSpeed: number
+  ttsStyle: string
+  ttsAutoScroll: boolean
 }
 
 // 搜索结果类型
