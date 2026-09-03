@@ -2,13 +2,26 @@ import React from 'react'
 import { useAppStore } from '../store'
 import { ThemeName, FontFamily, TtsEngine } from '../types'
 import { showToast } from './Toast'
+import bambooBg from '../assets/竹青色_竹影背景.webp'
+import paperBg from '../assets/纸质感_旧纸背景.webp'
+import porcelainBg from '../assets/瓷片感_白瓷冰裂纹.webp'
+import sunlightBg from '../assets/阳光墨水_晴天背景.webp'
+import darkBg from '../assets/暗夜黑_黑曜石背景.webp'
+
+const THEME_TEXTURE_MAP: Record<ThemeName, string> = {
+  bamboo: bambooBg,
+  paper: paperBg,
+  porcelain: porcelainBg,
+  sunlight: sunlightBg,
+  dark: darkBg,
+}
 
 const THEMES: { id: ThemeName; name: string; desc: string; bg: string; surface: string; accent: string; text: string }[] = [
-  { id: 'bamboo', name: '竹青', desc: '竹林清韵', bg: '#f3f6ef', surface: '#eaefe3', accent: '#789262', text: '#424c50' },
-  { id: 'paper', name: '纸质', desc: '旧书泛黄', bg: '#f5f0e1', surface: '#efe8d6', accent: '#845a33', text: '#4a3728' },
-  { id: 'porcelain', name: '瓷片', desc: '青瓷温润', bg: '#f5f8fa', surface: '#ecf2f0', accent: '#5b8c85', text: '#37474f' },
-  { id: 'sunlight', name: '阳光', desc: '墨水暖阳', bg: '#fbf5e6', surface: '#f3ecda', accent: '#d4960a', text: '#2c3e5d' },
-  { id: 'dark', name: '暗夜', desc: '深色护眼', bg: '#0a0a0a', surface: '#1a1a1a', accent: '#d4a853', text: '#e8e4dc' },
+  { id: 'bamboo', name: '竹青', desc: '苍翠修竹', bg: '#f3f6ee', surface: '#e7eee2', accent: '#3d7a50', text: '#222b24' },
+  { id: 'paper', name: '纸质', desc: '古籍宣纸', bg: '#f6f1e3', surface: '#ede4cf', accent: '#a44335', text: '#282019' },
+  { id: 'porcelain', name: '瓷片', desc: '天青温润', bg: '#f3f7f8', surface: '#e5eff0', accent: '#3b827e', text: '#202d33' },
+  { id: 'sunlight', name: '阳光', desc: '墨水暖金', bg: '#fbf6ea', surface: '#f2e8d2', accent: '#b37418', text: '#1a263b' },
+  { id: 'dark', name: '暗夜', desc: '黑曜金流', bg: '#0a0a0a', surface: '#181818', accent: '#dfb15b', text: '#eee9e0' },
 ]
 
 const FONTS: { id: FontFamily; name: string; sample: string; family: string }[] = [
@@ -103,8 +116,12 @@ const SettingsPage: React.FC = () => {
                   onClick={() => handleThemeChange(t.id)}
                 >
                   <span
-                    className="theme-swatch"
-                    style={{ background: t.bg, borderColor: t.surface }}
+                    className="theme-swatch has-texture"
+                    style={{
+                      background: t.bg,
+                      borderColor: t.surface,
+                      backgroundImage: `url(${THEME_TEXTURE_MAP[t.id]})`,
+                    }}
                   >
                     <span className="swatch-accent" style={{ background: t.accent }} />
                     <span className="swatch-text" style={{ color: t.text, background: t.surface }}>
@@ -220,7 +237,7 @@ const SettingsPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="setting-card">
+          <div className="setting-card" style={{ display: 'none' }}>
             <div className="setting-card-head">
               <div className="setting-title">语音朗读</div>
               <div className="setting-desc">默认使用浏览器 Web Speech API；可切换小米 MiMo-V2.5-TTS 获得更自然的云端语音</div>

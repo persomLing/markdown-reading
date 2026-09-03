@@ -100,8 +100,11 @@ ${names}
 
 请重新选择文件夹以继续使用。`,
           onConfirm: async () => {
+            for (const s of invalidSources) {
+              await store.removeSource(s.id)
+            }
             setInvalidModal(null)
-            showToast('请重新选择文件夹', 'info')
+            showToast('已移除失效文件源，请重新选择文件夹', 'info')
           },
         })
       }

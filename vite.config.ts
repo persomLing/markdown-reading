@@ -296,6 +296,23 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: mode === 'github' ? 'docs' : 'dist',
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('react') || id.includes('react-dom') || id.includes('zustand')) {
+                return 'vendor-framework'
+              }
+              if (id.includes('highlight.js')) {
+                return 'vendor-highlight'
+              }
+              if (id.includes('marked') || id.includes('dompurify')) {
+                return 'vendor-markdown'
+              }
+            }
+          },
+        },
+      },
     },
   }
 })

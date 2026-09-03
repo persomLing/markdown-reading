@@ -15,8 +15,12 @@ import typescript from 'highlight.js/lib/languages/typescript'
 import xml from 'highlight.js/lib/languages/xml'
 import { useAppStore } from '../store'
 import { showToast } from './Toast'
-import TtsPlayer from './TtsPlayer'
-import { useTtsReader } from '../hooks/useTtsReader'
+import type { ThemeName, FontFamily } from '../types'
+import bambooBg from '../assets/竹青色_竹影背景.webp'
+import paperBg from '../assets/纸质感_旧纸背景.webp'
+import porcelainBg from '../assets/瓷片感_白瓷冰裂纹.webp'
+import sunlightBg from '../assets/阳光墨水_晴天背景.webp'
+import darkBg from '../assets/暗夜黑_黑曜石背景.webp'
 
 // 检测移动端浏览器（手机浏览器普遍不支持 a.download，需长按保存）
 const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
@@ -189,6 +193,11 @@ renderer.code = function(code: string, language: string | undefined) {
   </div>`
 }
 
+// 自定义表格渲染：预先包裹自适应水平滚动容器
+renderer.table = function (header: string, body: string) {
+  return `<div class="md-table"><div class="md-table-scroll"><table>\n<thead>\n${header}</thead>\n${body ? `<tbody>\n${body}</tbody>\n` : ''}</table></div></div>\n`
+}
+
 marked.setOptions({
   breaks: true,
   gfm: true,
@@ -201,6 +210,22 @@ interface TocItem {
   level: number
 }
 
+const READER_THEMES: { id: ThemeName; name: string; bg: string; surface: string; accent: string; text: string; texture: string }[] = [
+  { id: 'bamboo', name: '竹青', bg: '#f3f6ee', surface: '#e7eee2', accent: '#3d7a50', text: '#222b24', texture: bambooBg },
+  { id: 'paper', name: '纸质', bg: '#f6f1e3', surface: '#ede4cf', accent: '#a44335', text: '#282019', texture: paperBg },
+  { id: 'porcelain', name: '瓷片', bg: '#f3f7f8', surface: '#e5eff0', accent: '#3b827e', text: '#202d33', texture: porcelainBg },
+  { id: 'sunlight', name: '阳光', bg: '#fbf6ea', surface: '#f2e8d2', accent: '#b37418', text: '#1a263b', texture: sunlightBg },
+  { id: 'dark', name: '暗夜', bg: '#0a0a0a', surface: '#181818', accent: '#dfb15b', text: '#eee9e0', texture: darkBg },
+]
+
+const READER_FONTS: { id: FontFamily; name: string; sample: string; family: string }[] = [
+  { id: 'serif', name: '衬线', sample: '永', family: '"Noto Serif SC", serif' },
+  { id: 'sans', name: '黑体', sample: '永', family: '"Noto Sans SC", sans-serif' },
+  { id: 'kai', name: '楷书', sample: '永', family: '"Ma Shan Zheng", serif' },
+  { id: 'xing', name: '行书', sample: '永', family: '"Zhi Mang Xing", serif' },
+  { id: 'cute', name: '可爱', sample: '永', family: '"ZCOOL KuaiLe", sans-serif' },
+]
+
 const MarkdownReader: React.FC = () => {
   const { 
     curFile, 
@@ -210,7 +235,10 @@ const MarkdownReader: React.FC = () => {
     setCurrentPage, 
     toggleToc, 
     toggleSearch,
-    setSettings,
+    setTheme,
+    setFontFamily,
+    setFontSize,
+    setLineHeight,
     sources,
     activeSourceId,
   } = useAppStore()
@@ -220,169 +248,42 @@ const MarkdownReader: React.FC = () => {
   const [searchResults, setSearchResults] = useState<Element[]>([])
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1)
   const [progress, setProgress] = useState(0)
-  const [renderRevision, setRenderRevision] = useState(0)
-  const [ttsOpen, setTtsOpen] = useState(false)
+  const [appearanceOpen, setAppearanceOpen] = useState(false)
+  const appearancePanelRef = useRef<HTMLDivElement>(null)
   
   const contentRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [screenshot, setScreenshot] = useState<string | null>(null)
 
-  const documentKey = `${activeSourceId || 'unknown'}::${curFile?.path || 'empty'}`
-  const tts = useTtsReader({
-    contentRef,
-    documentKey,
-    renderRevision,
-    preferredEngine: settings.ttsEngine,
-    apiKey: settings.mimoApiKey,
-    voice: settings.ttsVoice,
-    speed: settings.ttsSpeed,
-    stylePrompt: settings.ttsStyle,
-    autoScroll: settings.ttsAutoScroll,
-  })
-
-  const toggleTtsPlayer = () => {
-    if (ttsOpen) tts.stop()
-    setTtsOpen((open) => !open)
+  const toggleAppearance = () => {
+    setAppearanceOpen((open) => !open)
   }
 
-  // 复制代码功能
+  // 点击外部或按 ESC 关闭外观面板
   useEffect(() => {
-    ;(window as any).copyCode = copyCode;
-
-    // 全屏代码功能 - 使用浏览器原生全屏API
-    ;(window as any).fullscreenCode = (btn: HTMLButtonElement) => {
-      const codeBlock = btn.closest('.code-block')
-      if (!codeBlock) return
-      
-      // 创建全屏容器
-      const fullscreenDiv = document.createElement('div')
-      fullscreenDiv.className = 'code-fullscreen-wrapper'
-      
-      // 创建头部
-      const header = document.createElement('div')
-      header.className = 'code-fullscreen-header'
-      
-      const langSpan = codeBlock.querySelector('.code-lang')
-      const langText = langSpan?.textContent || 'text'
-      
-      header.innerHTML = `
-        <span class="code-fullscreen-lang">${langText}</span>
-        <div class="code-fullscreen-actions">
-          <button class="code-fullscreen-copy" onclick="window.copyFullscreenCode(this)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
-            <span>复制</span>
-          </button>
-          <button class="code-fullscreen-close" onclick="window.closeFullscreenCode()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
-            </svg>
-            <span>退出全屏</span>
-          </button>
-        </div>
-      `
-      
-      // 克隆代码内容
-      const pre = codeBlock.querySelector('pre')
-      if (pre) {
-        const clonedPre = pre.cloneNode(true)
-        fullscreenDiv.appendChild(header)
-        fullscreenDiv.appendChild(clonedPre)
-      }
-      
-      // 存储引用用于关闭
-      document.body.appendChild(fullscreenDiv)
-      ;(window as any).__fullscreenCodeDiv = fullscreenDiv
-      
-      // 请求浏览器全屏
-      if (fullscreenDiv.requestFullscreen) {
-        fullscreenDiv.requestFullscreen()
-      } else if ((fullscreenDiv as any).webkitRequestFullscreen) {
-        (fullscreenDiv as any).webkitRequestFullscreen()
-      } else if ((fullscreenDiv as any).msRequestFullscreen) {
-        (fullscreenDiv as any).msRequestFullscreen()
-      }
-      
-      // 尝试锁定横屏方向（移动端）
-      try {
-        if (screen.orientation && (screen.orientation as any).lock) {
-          (screen.orientation as any).lock('landscape').catch(() => {
-            // 某些设备可能不支持锁定方向，忽略错误
-            console.log('无法锁定横屏方向')
-          })
-        }
-      } catch (e) {
-        // 忽略不支持的方向锁定
-      }
-      
-      // 监听全屏状态变化
-      const handleFullscreenChange = () => {
-        if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
-          // 退出全屏时清理DOM
-          fullscreenDiv.remove()
-          document.removeEventListener('fullscreenchange', handleFullscreenChange)
-          document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
-          
-          // 解锁屏幕方向
-          try {
-            if (screen.orientation && (screen.orientation as any).unlock) {
-              (screen.orientation as any).unlock()
-            }
-          } catch (e) {
-            // 忽略解锁错误
-          }
-        }
-      }
-      document.addEventListener('fullscreenchange', handleFullscreenChange)
-      document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
-    }
-
-    // 关闭全屏
-    ;(window as any).closeFullscreenCode = () => {
-      if (document.exitFullscreen) {
-        document.exitFullscreen()
-      } else if ((document as any).webkitExitFullscreen) {
-        (document as any).webkitExitFullscreen()
-      } else if ((document as any).msExitFullscreen) {
-        (document as any).msExitFullscreen()
-      }
-      
-      // 解锁屏幕方向
-      try {
-        if (screen.orientation && (screen.orientation as any).unlock) {
-          (screen.orientation as any).unlock()
-        }
-      } catch (e) {
-        // 忽略解锁错误
+    if (!appearanceOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (
+        appearancePanelRef.current &&
+        !appearancePanelRef.current.contains(target) &&
+        !target.closest('.appearance-trigger-btn')
+      ) {
+        setAppearanceOpen(false)
       }
     }
-
-    // 全屏内复制代码
-    ;(window as any).copyFullscreenCode = (btn: HTMLButtonElement) => {
-      const code = btn.closest('.code-fullscreen-wrapper')?.querySelector('pre code')?.textContent || ''
-      navigator.clipboard.writeText(code).then(() => {
-        const span = btn.querySelector('span')
-        if (span) {
-          btn.classList.add('copied')
-          span.textContent = '已复制'
-          setTimeout(() => {
-            btn.classList.remove('copied')
-            span.textContent = '复制'
-          }, 2000)
-        }
-      })
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setAppearanceOpen(false)
     }
-
-    // 组件事件通过 ref 调用，避免开发态生命周期清理造成全局函数暂时缺失
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKeyDown)
     return () => {
-      delete (window as any).copyCode
-      delete (window as any).fullscreenCode
-      delete (window as any).closeFullscreenCode
-      delete (window as any).copyFullscreenCode
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [])
+  }, [appearanceOpen])
+
+
 
   // 渲染 Markdown
   useEffect(() => {
@@ -411,6 +312,7 @@ const MarkdownReader: React.FC = () => {
         // 为 GitHub 源创建自定义渲染器，重写图片 URL
         const customRenderer = new marked.Renderer()
         customRenderer.code = renderer.code.bind(customRenderer)
+        customRenderer.table = renderer.table.bind(customRenderer)
         customRenderer.image = function (href: string, title: string | null, text: string): string {
           let src = href
           if (src && !/^https?:\/\//i.test(src) && !src.startsWith('data:')) {
@@ -452,7 +354,6 @@ const MarkdownReader: React.FC = () => {
         // 为内部锚点链接添加点击事件
         setupAnchorLinks()
         setupCodeActions()
-        setRenderRevision((revision) => revision + 1)
         
         // 恢复滚动位置
         const savedScroll = localStorage.getItem(getScrollKey(activeSourceId, curFile.path))
@@ -613,8 +514,9 @@ const MarkdownReader: React.FC = () => {
     setSearchResults(highlights)
     setCurrentSearchIndex(highlights.length > 0 ? 0 : -1)
     
-    // 滚动到第一个高亮位置
+    // 滚动到第一个高亮位置并标记 active
     if (highlights.length > 0) {
+      highlights[0].classList.add('active')
       highlights[0].scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
   }, [searchQuery])
@@ -628,6 +530,10 @@ const MarkdownReader: React.FC = () => {
   const navigateSearch = (direction: 'next' | 'prev') => {
     if (searchResults.length === 0) return
 
+    if (currentSearchIndex >= 0 && searchResults[currentSearchIndex]) {
+      searchResults[currentSearchIndex].classList.remove('active')
+    }
+
     let newIndex: number
     if (direction === 'next') {
       newIndex = (currentSearchIndex + 1) % searchResults.length
@@ -637,9 +543,10 @@ const MarkdownReader: React.FC = () => {
     
     setCurrentSearchIndex(newIndex)
     
-    // 滚动到当前高亮位置
+    // 滚动到当前高亮位置并标记 active
     const highlight = searchResults[newIndex] as HTMLElement
     if (highlight) {
+      highlight.classList.add('active')
       highlight.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
   }
@@ -687,6 +594,11 @@ const MarkdownReader: React.FC = () => {
       setTimeout(() => {
         element.style.backgroundColor = ''
       }, 1500)
+    }
+
+    // 移动端选择目录项后自动收起目录
+    if (window.innerWidth <= 768) {
+      toggleToc()
     }
   }
 
@@ -814,30 +726,37 @@ const MarkdownReader: React.FC = () => {
       <div className="reader-bg" />
 
       <div className="reader-shell">
-        {/* 目录侧边栏 */}
+        {/* 目录侧边栏与移动端遮罩 */}
         {tocOpen && (
-          <aside className="toc-sidebar">
-            <div className="toc-header">
-              <h3>目录</h3>
-              <button onClick={toggleToc} title="关闭目录">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-            <div className="toc-content">
-              {toc.map((item) => (
-                <div
-                  key={item.id}
-                  className={`toc-item level-${item.level}`}
-                  onClick={() => scrollToHeading(item.id)}
-                >
-                  {item.text}
-                </div>
-              ))}
-            </div>
-          </aside>
+          <>
+            <div
+              className="toc-backdrop"
+              onClick={toggleToc}
+              aria-label="关闭目录"
+            />
+            <aside className="toc-sidebar">
+              <div className="toc-header">
+                <h3>目录</h3>
+                <button onClick={toggleToc} title="关闭目录">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+              <div className="toc-content">
+                {toc.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`toc-item level-${item.level}`}
+                    onClick={() => scrollToHeading(item.id)}
+                  >
+                    {item.text}
+                  </div>
+                ))}
+              </div>
+            </aside>
+          </>
         )}
 
         <div className="reader-main">
@@ -850,7 +769,15 @@ const MarkdownReader: React.FC = () => {
             </button>
             <div className="reader-title">{curFile.name}</div>
             <div className="reader-actions">
-              <button onClick={toggleToc} title="目录">
+              <button
+                onClick={toggleAppearance}
+                className={`appearance-trigger-btn ${appearanceOpen ? 'active' : ''}`}
+                title="外观与排版"
+                aria-label="外观与排版"
+              >
+                <span className="reader-aa-badge">Aa</span>
+              </button>
+              <button onClick={toggleToc} className={tocOpen ? 'active' : ''} title="目录">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <line x1="8" y1="6" x2="21" y2="6" />
                   <line x1="8" y1="12" x2="21" y2="12" />
@@ -860,22 +787,10 @@ const MarkdownReader: React.FC = () => {
                   <line x1="3" y1="18" x2="3.01" y2="18" />
                 </svg>
               </button>
-              <button onClick={toggleSearch} title="搜索">
+              <button onClick={toggleSearch} className={searchOpen ? 'active' : ''} title="搜索">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-              </button>
-              <button
-                onClick={toggleTtsPlayer}
-                className={ttsOpen ? 'active' : ''}
-                title={ttsOpen ? '关闭朗读' : '语音朗读'}
-                aria-label={ttsOpen ? '关闭朗读' : '语音朗读'}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M11 5 6 9H2v6h4l5 4V5Z" />
-                  <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-                  <path d="M18 6a8.5 8.5 0 0 1 0 12" />
                 </svg>
               </button>
               <button onClick={takeScreenshot} title="截图">
@@ -929,6 +844,152 @@ const MarkdownReader: React.FC = () => {
             </div>
           )}
 
+          {/* 外观与排版控制面板 */}
+          {appearanceOpen && (
+            <>
+              <div
+                className="reader-appearance-backdrop"
+                onClick={() => setAppearanceOpen(false)}
+              />
+              <div className="reader-appearance-panel" ref={appearancePanelRef}>
+                <div className="rap-header">
+                  <div className="rap-title">外观与排版</div>
+                  <button
+                    className="rap-close-btn"
+                    onClick={() => setAppearanceOpen(false)}
+                    aria-label="关闭"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* 主题选择 */}
+                <div className="rap-section">
+                  <div className="rap-section-label">阅读主题</div>
+                  <div className="rap-theme-grid">
+                    {READER_THEMES.map((t) => (
+                      <button
+                        key={t.id}
+                        className={`rap-theme-item ${settings.theme === t.id ? 'active' : ''}`}
+                        onClick={() => setTheme(t.id)}
+                        title={t.name}
+                      >
+                        <span
+                          className="rap-theme-swatch"
+                          style={{
+                            background: t.bg,
+                            backgroundImage: `url(${t.texture})`,
+                            borderColor: t.surface,
+                          }}
+                        >
+                          <span className="rap-theme-accent" style={{ background: t.accent }} />
+                          {settings.theme === t.id && (
+                            <span className="rap-theme-check">✓</span>
+                          )}
+                        </span>
+                        <span className="rap-theme-name">{t.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 字体选择 */}
+                <div className="rap-section">
+                  <div className="rap-section-label">正文字体</div>
+                  <div className="rap-font-grid">
+                    {READER_FONTS.map((f) => (
+                      <button
+                        key={f.id}
+                        className={`rap-font-item ${settings.fontFamily === f.id ? 'active' : ''}`}
+                        onClick={() => setFontFamily(f.id)}
+                        style={{ fontFamily: f.family }}
+                      >
+                        <span className="rap-font-sample">{f.sample}</span>
+                        <span className="rap-font-name">{f.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 字号调节 */}
+                <div className="rap-section">
+                  <div className="rap-section-label">
+                    <span>字号</span>
+                    <span className="rap-val-badge">{settings.fontSize}px</span>
+                  </div>
+                  <div className="rap-control-row">
+                    <button
+                      className="rap-step-btn"
+                      onClick={() => setFontSize(Math.max(12, settings.fontSize - 1))}
+                      disabled={settings.fontSize <= 12}
+                      aria-label="缩小字号"
+                    >
+                      A-
+                    </button>
+                    <input
+                      type="range"
+                      className="slider"
+                      min={12}
+                      max={24}
+                      step={1}
+                      value={settings.fontSize}
+                      onChange={(e) => setFontSize(Number(e.target.value))}
+                      style={{ ['--pct' as any]: `${((settings.fontSize - 12) / (24 - 12)) * 100}%` }}
+                    />
+                    <button
+                      className="rap-step-btn"
+                      onClick={() => setFontSize(Math.min(24, settings.fontSize + 1))}
+                      disabled={settings.fontSize >= 24}
+                      aria-label="放大字号"
+                    >
+                      A+
+                    </button>
+                  </div>
+                </div>
+
+                {/* 行距调节 */}
+                <div className="rap-section">
+                  <div className="rap-section-label">
+                    <span>行距</span>
+                    <span className="rap-val-badge">{settings.lh.toFixed(2)}</span>
+                  </div>
+                  <div className="rap-lh-presets">
+                    {[
+                      { label: '紧凑', val: 1.5 },
+                      { label: '适中', val: 1.8 },
+                      { label: '宽松', val: 2.1 },
+                    ].map((p) => (
+                      <button
+                        key={p.val}
+                        className={`rap-lh-chip ${Math.abs(settings.lh - p.val) < 0.08 ? 'active' : ''}`}
+                        onClick={() => setLineHeight(p.val)}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="rap-control-row" style={{ marginTop: '8px' }}>
+                    <span className="rap-edge-text">紧</span>
+                    <input
+                      type="range"
+                      className="slider"
+                      min={1.3}
+                      max={2.4}
+                      step={0.05}
+                      value={settings.lh}
+                      onChange={(e) => setLineHeight(Number(e.target.value))}
+                      style={{ ['--pct' as any]: `${((settings.lh - 1.3) / (2.4 - 1.3)) * 100}%` }}
+                    />
+                    <span className="rap-edge-text">松</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* 内容区域 */}
           <div className="reader-content" ref={scrollRef}>
             <div
@@ -940,24 +1001,6 @@ const MarkdownReader: React.FC = () => {
               }}
             />
           </div>
-
-          {ttsOpen && (
-            <TtsPlayer
-              status={tts.status}
-              engine={tts.engine}
-              error={tts.error}
-              fallbackReason={tts.fallbackReason}
-              currentIndex={tts.currentIndex}
-              segmentCount={tts.segmentCount}
-              settings={settings}
-              onEngineChange={(ttsEngine) => setSettings({ ttsEngine })}
-              onToggle={tts.togglePlayback}
-              onPrevious={tts.previous}
-              onNext={tts.next}
-              onVoiceChange={(ttsVoice) => setSettings({ ttsVoice })}
-              onSpeedChange={(ttsSpeed) => setSettings({ ttsSpeed })}
-            />
-          )}
         </div>
       </div>
 

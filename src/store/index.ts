@@ -397,20 +397,23 @@ export const useAppStore = create<AppStore>()(
 
           // 内置源：从打包内容读取
           if (isBuiltinActive(activeSourceId)) {
-            const f = BUILTIN_FILES.find((x) => x.name === name)
+            const { path } = get()
+            const fullPath = path.length ? `${path.join('/')}/${name}` : name
+            const f = BUILTIN_FILES.find((x) => x.path === fullPath || x.name === name)
             if (!f) return
-            setCurrentFile({ name, content: f.content, path: name, size: f.size })
-            setCurrentPath(name)
+            const filePath = f.path
+            setCurrentFile({ name: f.name, content: f.content, path: filePath, size: f.size })
+            setCurrentPath(filePath)
             addHistory({
               id: Date.now().toString(),
-              name,
-              path: name,
+              name: f.name,
+              path: filePath,
               size: f.size,
               ts: Date.now(),
               sourceType: 'builtin',
               sourceId,
             })
-            setLastFile({ path: name, name, ts: Date.now(), sourceType: 'builtin', sourceId })
+            setLastFile({ path: filePath, name: f.name, ts: Date.now(), sourceType: 'builtin', sourceId })
             setCurrentPage('reader')
             return
           }
@@ -510,10 +513,12 @@ export const useAppStore = create<AppStore>()(
 
           // 内置源
           if (isBuiltinActive(sourceId || activeSourceId)) {
-            const f = BUILTIN_FILES.find((x) => x.name === relPath)
+            const f = BUILTIN_FILES.find((x) => x.path === relPath || x.name === relPath)
             if (!f) return false
-            setCurrentFile({ name: relPath, content: f.content, path: relPath, size: f.size })
-            setCurrentPath(relPath)
+            setCurrentFile({ name: f.name, content: f.content, path: f.path, size: f.size })
+            setCurrentPath(f.path)
+            const pathParts = f.path.split('/').slice(0, -1)
+            get().setPath(pathParts)
             setCurrentPage('reader')
             return true
           }
